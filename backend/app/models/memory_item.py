@@ -43,5 +43,7 @@ class MemoryItem(IdMixin, CreatedAtMixin, Base):
     topic_embedding: Mapped[list[float]] = mapped_column(Vector(_DIM))
     search_tsv: Mapped[str] = mapped_column(
         TSVECTOR,
-        Computed("to_tsvector('english', statement || ' ' || evidence_quote)", persisted=True),
+        Computed(
+            "to_tsvector('english', topic || ' ' || statement || ' ' || evidence_quote)", persisted=True
+        ),
     )

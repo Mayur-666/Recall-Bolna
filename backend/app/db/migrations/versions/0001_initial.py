@@ -189,7 +189,7 @@ def upgrade() -> None:
         sa.Column(
             "search_tsv",
             postgresql.TSVECTOR(),
-            sa.Computed("to_tsvector('english', statement || ' ' || evidence_quote)", persisted=True),
+            sa.Computed("to_tsvector('english', topic || ' ' || statement || ' ' || evidence_quote)", persisted=True),
             nullable=False,
         ),
         sa.Column("id", sa.UUID(), nullable=False),

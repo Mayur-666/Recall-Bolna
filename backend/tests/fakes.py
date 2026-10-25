@@ -10,6 +10,29 @@ from app.core.config import get_settings
 from app.integrations.model_client import EmbeddingTimeout
 
 _WORD = re.compile(r"[a-z0-9]+")
+_STOP = {
+    "the",
+    "a",
+    "an",
+    "we",
+    "i",
+    "did",
+    "do",
+    "what",
+    "who",
+    "when",
+    "about",
+    "to",
+    "of",
+    "on",
+    "for",
+    "is",
+    "it",
+    "and",
+    "search",
+    "query",
+    "document",
+}
 
 
 def bow_vector(text: str, dim: int | None = None) -> list[float]:
@@ -17,6 +40,8 @@ def bow_vector(text: str, dim: int | None = None) -> list[float]:
     dim = dim or get_settings().EMBED_DIM
     vec = [0.0] * dim
     for word in _WORD.findall(text.lower()):
+        if word in _STOP:
+            continue
         h = int(hashlib.md5(word.encode()).hexdigest(), 16)
         vec[h % dim] += 1.0
     norm = math.sqrt(sum(v * v for v in vec)) or 1.0

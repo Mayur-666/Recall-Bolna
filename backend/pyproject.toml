@@ -23,5 +23,8 @@ python_version = "3.12"
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Query", "fastapi.Header"]

@@ -19,6 +19,7 @@ from app.models import Chunk, Conversation, IngestionJob, TranscriptSegment
 from app.repositories.chunks import ChunksRepo, clear_derived
 from app.repositories.jobs import JobsRepo
 from app.services.chunker import ChunkDraft, build_chunks
+from app.services.extraction import ExtractionService
 from app.services.transcript_parser import parse_transcript
 
 log = logging.getLogger(__name__)
@@ -59,24 +60,28 @@ async def _build(session: AsyncSession, conv: Conversation, model: ModelClientPr
         vectors.extend(await model.embed(texts[i : i + EMBED_BATCH], kind="document"))
     timings["embed_ms"] = round((time.perf_counter() - t) * 1000, 1)
 
-    await ChunksRepo(session).add_all(
-        [
-            Chunk(
-                conversation_id=conv.id,
-                user_id=conv.user_id,
-                seq=d.seq,
-                text=d.text,
-                char_start=d.char_start,
-                char_end=d.char_end,
-                speakers=d.speakers,
-                embed_text=text,
-                embedding=vec,
-            )
-            for d, text, vec in zip(drafts, texts, vectors, strict=True)
-        ]
-    )
+    chunk_rows = [
+        Chunk(
+            conversation_id=conv.id,
+            user_id=conv.user_id,
+            seq=d.seq,
+            text=d.text,
+            char_start=d.char_start,
+            char_end=d.char_end,
+            speakers=d.speakers,
+            embed_text=text,
+            embedding=vec,
+        )
+        for d, text, vec in zip(drafts, texts, vectors, strict=True)
+    ]
+    await ChunksRepo(session).add_all(chunk_rows)
     timings["chunks"] = len(drafts)
     timings["segments"] = len(segments)
+
+    t = time.perf_counter()
+    stats = await ExtractionService(session, model).extract_and_store(conv, segments, chunk_rows)
+    timings["extract_ms"] = round((time.perf_counter() - t) * 1000, 1)
+    timings["extraction"] = stats.as_dict()
     return timings
 
 

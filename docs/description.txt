@@ -1,0 +1,13 @@
+# Recall — A Voice-First Memory Companion
+
+**Remember every important conversation. Just ask.**
+
+Recall is a voice-first AI memory companion that helps people retrieve important details from past conversations without digging through notes, recordings, or chat histories.
+
+Users can add conversation transcripts to Recall, which organizes them into searchable memories containing key decisions, people, commitments, and action items. Through a natural voice conversation powered by Bolna, users can ask questions such as “What did we decide about the API?”, “Who suggested WebSockets?” or “What did I promise to follow up on?”
+
+Instead of merely summarizing conversations, Recall connects answers to their original sources, helping users revisit the context behind important decisions. When the available memories don't contain a reliable answer, Recall acknowledges the gap rather than inventing one.
+
+Built as a software-first prototype, Recall combines conversational voice AI, semantic memory retrieval, and a simple interface for managing and exploring past conversations. It reimagines memory as something people can interact with naturally: not another notebook to maintain, but a conversation they can return to whenever they need to remember.
+
+**Built for the Bolna Symphony Buildathon, Recall demonstrates how voice AI can transform stored conversations into accessible, contextual, and actionable memory.**

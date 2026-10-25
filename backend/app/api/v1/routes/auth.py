@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import LoginRequest, UserOut
 from app.services.auth import AuthService
+from app.services.call_sessions import CallSessionService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -29,7 +30,10 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
 
 
 @router.post("/logout", status_code=204)
-async def logout(user: User = Depends(current_user)) -> Response:
+async def logout(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)) -> Response:
+    # Ending the web session also ends any voice call tokens it issued.
+    await CallSessionService(db).revoke_all_for_user(user.id)
+    await db.commit()
     response = Response(status_code=204)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response

@@ -105,6 +105,18 @@ def parse_ref(ref: str | None) -> tuple[str, uuid.UUID] | None:
         return None
 
 
+async def memory_counts(session: AsyncSession, user_id: uuid.UUID) -> tuple[int, int]:
+    """(ready conversations, memory items in ready conversations) for one user."""
+    conversations = await ConversationsRepo(session).count_ready(user_id)
+    memories = await session.scalar(
+        select(func.count())
+        .select_from(MemoryItem)
+        .join(Conversation, Conversation.id == MemoryItem.conversation_id)
+        .where(MemoryItem.user_id == user_id, Conversation.status == "ready")
+    )
+    return conversations, int(memories or 0)
+
+
 @dataclass
 class _Cand:
     key: str
@@ -308,14 +320,7 @@ class RetrievalService:
         return [Hit(f"{kind}:{rid}", row.conversation_id, 1.0)]
 
     async def _counts(self, user_id: uuid.UUID) -> tuple[int, int]:
-        conversations = await ConversationsRepo(self.session).count_ready(user_id)
-        memories = await self.session.scalar(
-            select(func.count())
-            .select_from(MemoryItem)
-            .join(Conversation, Conversation.id == MemoryItem.conversation_id)
-            .where(MemoryItem.user_id == user_id, Conversation.status == "ready")
-        )
-        return conversations, int(memories or 0)
+        return await memory_counts(self.session, user_id)
 
     async def _evidence(
         self, user_id: uuid.UUID, keys: list[str], cands: dict[str, _Cand], today: date

@@ -25,6 +25,8 @@ services:
 
   ollama:
     image: ollama/ollama:latest
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
     volumes:
       - ollama:/root/.ollama
     ports:

@@ -21,6 +21,8 @@ class CallSession(IdMixin, CreatedAtMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     bolna_execution_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    # run_id returned by the web-call session mint (SDK v3); may equal the execution id (unverified).
+    bolna_run_id: Mapped[str | None] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(24), default="created")
     user_data_sent: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

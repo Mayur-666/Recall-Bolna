@@ -50,7 +50,8 @@ class Settings(BaseSettings):
     BOLNA_API_KEY: str = ""
     BOLNA_AGENT_ID: str = ""
     BOLNA_BASE_URL: str = "https://api.bolna.ai"
-    BOLNA_WEB_CALL_SESSION_PATH: str = "/web-call/session"
+    # @bolna/web-call 3.0.1 mints via this path (its Session type docs); bolna.ai docs show /web-call/session.
+    BOLNA_WEB_CALL_SESSION_PATH: str = "/web-call/freeswitch-session"
     BOLNA_WEBHOOK_IP: str = "13.203.39.153"
     RECALL_TOOL_TOKEN: str = ""
     PUBLIC_BASE_URL: str = ""

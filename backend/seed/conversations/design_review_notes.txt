@@ -1,0 +1,4 @@
+Notes from the design review.
+The team agreed to switch the primary font to Inter across the web app.
+Someone raised that the contrast on the dashboard cards is too low; it will be fixed before the beta.
+Dark mode is postponed until after launch.

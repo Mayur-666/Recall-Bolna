@@ -1,0 +1,6 @@
+Priya: Should we have three tiers, maybe free, pro and team?
+Neha: I'm not sure about a free tier. It could drive support costs up.
+Mayur: What if the free tier has a hard limit on stored conversations?
+Priya: That could work, but we don't have usage data yet.
+Mayur: Let's not finalize pricing today. We need data from the beta first.
+Neha: Agreed, we leave pricing open until the beta numbers come in.

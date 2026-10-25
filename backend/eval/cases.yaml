@@ -1,0 +1,78 @@
+# Retrieval evaluation against the seeded demo account, real embedding model, real DB.
+# Every case is must-pass. Expectations are checked by eval/run_retrieval_eval.py.
+cases:
+  - id: exact_name
+    question: What did Priya say about WebSockets?
+    expect:
+      status_in: [found]
+      top3_title: API design sync
+      top3_speaker: Priya
+
+  - id: relative_date
+    question: What did we decide last week?
+    expect:
+      status_in: [found, ambiguous]
+      all_dates_in: last_week
+
+  - id: changed_decision
+    question: Which deployment provider did we pick for the beta?
+    expect:
+      status_in: [found]
+      has_item: {match: render, state: decided}
+      if_present: {match: ecs, state: superseded}
+
+  - id: conflict_or_separate_scope
+    question: Which database did we choose?
+    expect:
+      status_in: [found, ambiguous]
+      postgres_mysql_not_silently_merged: true
+
+  - id: followup_who_said_that
+    question: Who said that?
+    previous_ref_from: exact_name
+    expect:
+      status_in: [found, ambiguous]
+      top1_speaker_in: [Priya, "Priya, Arjun", "Priya, Arjun, Mayur", "Priya, Mayur"]
+
+  - id: no_match
+    question: What did we decide about the office lease?
+    expect:
+      status_in: [no_reliable_memory]
+
+  - id: similar_unrelated
+    question: When is the launch date?
+    expect:
+      status_in: [ambiguous, no_reliable_memory]
+
+  - id: isolation
+    question: What is the access code for the Project Falcon demo room?
+    expect:
+      status_in: [no_reliable_memory]
+      no_titles: [Project Falcon sync]
+
+  - id: pending_reported
+    question: What did we decide about the mobile release?
+    setup: queued_conversation
+    expect:
+      status_in: [no_reliable_memory]
+      pending_contains: Mobile release planning (pending)
+
+  - id: self_commitment
+    question: What did I promise to do?
+    standalone_query: What did Mayur promise to do or follow up on?
+    expect:
+      status_in: [found, ambiguous]
+      has_owner_is_user: auth spec
+
+  - id: unresolved
+    question: Did we finalize pricing?
+    expect:
+      status_in: [found]
+      no_decided_match: pricing
+
+  - id: degraded
+    question: What did Priya say about WebSockets?
+    setup: embedding_timeout
+    expect:
+      status_in: [found]
+      degraded: true

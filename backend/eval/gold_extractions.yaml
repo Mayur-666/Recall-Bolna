@@ -1,0 +1,33 @@
+# Hand-written expected extractions for the seed transcripts.
+# An extracted item matches a gold item when its kind is compatible and every `match`
+# phrase appears (case-insensitive) in its statement or evidence quote.
+# `states`: acceptable decision states. `speaker` / `owner`: expected labels (null = none recorded).
+api_design_sync.txt:
+  - {kind: decision, match: [websockets, rest], states: [decided], speaker: Mayur}
+  - {kind: decision, match: [v1], states: [decided]}
+  - {kind: decision, match: [rate limit], states: [unresolved, proposed]}
+  - {kind: commitment, match: [auth spec], owner: Mayur, owner_is_user: true}
+  - {kind: commitment, match: [prototype], owner: Priya}
+deployment_planning.txt:
+  - {kind: decision, match: [ecs], states: [decided], speaker: Mayur, superseded_by_file: deployment_followup.txt}
+  - {kind: commitment, match: [cluster], owner: Neha}
+  - {kind: commitment, match: [rds], owner: Arjun}
+deployment_followup.txt:
+  - {kind: decision, match: [render], states: [decided], speaker: Mayur, change_signal: true}
+  - {kind: commitment, match: [migrate], owner: Neha}
+database_choice.txt:
+  - {kind: decision, match: [postgres], states: [decided], speaker: Mayur}
+  - {kind: commitment, match: [migration], owner: Arjun}
+analytics_sync.txt:
+  - {kind: decision, match: [mysql], states: [decided], speaker: Mayur}
+  - {kind: commitment, match: [export], owner: Ravi}
+hiring_sync.txt:
+  - {kind: [date, fact], match: [november 12]}
+  - {kind: commitment, match: [monday], owner: Kavya}
+marketing_sync.txt:
+  - {kind: [date, fact], match: [december 1]}
+  - {kind: commitment, match: [sponsorship], owner: Sam}
+pricing_discussion.txt:
+  - {kind: decision, match: [pricing], states: [unresolved, proposed], never_decided: true}
+design_review_notes.txt:
+  - {kind: decision, match: [inter], states: [decided], speaker: null}

@@ -28,3 +28,15 @@ class JobsRepo:
         if job is not None:
             job.status = "running"
         return job
+
+    async def claim(self, job_id: uuid.UUID) -> bool:
+        """Claim one specific queued job; False if another worker already has it."""
+        job = await self.session.scalar(
+            select(IngestionJob)
+            .where(IngestionJob.id == job_id, IngestionJob.status == "queued")
+            .with_for_update(skip_locked=True)
+        )
+        if job is None:
+            return False
+        job.status = "running"
+        return True

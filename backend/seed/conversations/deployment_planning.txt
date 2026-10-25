@@ -1,0 +1,7 @@
+Neha: We need to pick where the backend runs for the beta.
+Arjun: AWS ECS gives us autoscaling, and we already have startup credits there.
+Neha: Render would be quicker to set up, but I'm worried about cold starts on the free plan.
+Mayur: Let's go with AWS ECS for the beta deployment. We have the credits and it scales.
+Neha: Okay, ECS it is. I'll set up the cluster and the CI pipeline.
+Arjun: I'll handle the Postgres instance on RDS.
+Mayur: The target is to have staging live by October 30.

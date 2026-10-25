@@ -17,6 +17,7 @@ def bolna_env(monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "BOLNA_API_KEY", "bn-test-key")
     monkeypatch.setattr(s, "BOLNA_AGENT_ID", "agent-123")
+    monkeypatch.setattr(s, "BOLNA_WEB_CALL_SESSION_PATH", "/web-call/session")
 
 
 @pytest.fixture
@@ -140,3 +141,24 @@ async def test_other_users_call_404(client, make_user, login):
     assert (await client.get(f"/api/v1/calls/{cs.id}")).status_code == 404
     assert (await client.post(f"/api/v1/calls/{cs.id}/end")).status_code == 404
     assert all(c["id"] != str(cs.id) for c in (await client.get("/api/v1/calls")).json())
+
+
+@respx.mock
+async def test_web_session_stores_run_id_and_end_uses_it_for_transcript(client, authed, monkeypatch):
+    monkeypatch.setattr(get_settings(), "BOLNA_WEB_CALL_SESSION_PATH", "/web-call/freeswitch-session")
+    respx.post(f"{BASE}/web-call/freeswitch-session").mock(
+        return_value=httpx.Response(
+            200, json={"run_id": "run-77", "agent_id": "agent-123", "expires_in": 120}
+        )
+    )
+    respx.get(f"{BASE}/executions/run-77").mock(
+        return_value=httpx.Response(
+            200, json={"id": "run-77", "status": "completed", "transcript": "user: hi"}
+        )
+    )
+    cs_id = (await client.post("/api/v1/calls/web-session")).json()["call_session_id"]
+    async with get_sessionmaker()() as s:
+        cs = await s.get(CallSession, cs_id)
+    assert cs.bolna_run_id == "run-77"
+    body = (await client.post(f"/api/v1/calls/{cs_id}/end")).json()
+    assert body["transcript"] == "user: hi"

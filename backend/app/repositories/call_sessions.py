@@ -27,7 +27,9 @@ class CallSessionsRepo:
 
     async def get_by_execution(self, execution_id: str) -> CallSession | None:
         return await self.session.scalar(
-            select(CallSession).where(CallSession.bolna_execution_id == execution_id)
+            select(CallSession).where(
+                (CallSession.bolna_execution_id == execution_id) | (CallSession.bolna_run_id == execution_id)
+            )
         )
 
     async def list_for_user(self, user_id: uuid.UUID, limit: int = 50) -> Sequence[CallSession]:

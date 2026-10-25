@@ -1,0 +1,60 @@
+# Clearly labeled SAMPLE conversations for the demo account (is_sample = true).
+# Dates are relative to the day the seed runs (days_ago), so "last week" questions keep working;
+# re-run with --refresh-dates before a demo.
+demo:
+  - file: api_design_sync.txt
+    title: API design sync
+    days_ago: 9
+    participants: [Priya, Arjun, Mayur]
+    self_speaker: Mayur
+  - file: deployment_planning.txt
+    title: Deployment planning
+    days_ago: 12
+    participants: [Neha, Arjun, Mayur]
+    self_speaker: Mayur
+  - file: deployment_followup.txt
+    title: Deployment follow-up
+    days_ago: 5
+    participants: [Neha, Mayur]
+    self_speaker: Mayur
+  - file: database_choice.txt
+    title: Database choice
+    days_ago: 20
+    participants: [Arjun, Priya, Mayur]
+    self_speaker: Mayur
+  - file: analytics_sync.txt
+    title: Analytics sync
+    days_ago: 3
+    participants: [Ravi, Mayur]
+    self_speaker: Mayur
+  - file: hiring_sync.txt
+    title: Hiring sync
+    days_ago: 15
+    participants: [Kavya, Mayur]
+    self_speaker: Mayur
+  - file: marketing_sync.txt
+    title: Marketing sync
+    days_ago: 14
+    participants: [Sam, Mayur]
+    self_speaker: Mayur
+  - file: pricing_discussion.txt
+    title: Pricing discussion
+    days_ago: 6
+    participants: [Priya, Neha, Mayur]
+    self_speaker: Mayur
+  - file: design_review_notes.txt
+    title: Design review notes
+    days_ago: 2
+    participants: []
+    self_speaker: null
+
+# A second account used only to prove isolation.
+second_user:
+  email: second@recall.local
+  name: Omar
+  conversations:
+    - file: falcon_secret_sync.txt
+      title: Project Falcon sync
+      days_ago: 4
+      participants: [Priya, Omar]
+      self_speaker: Omar

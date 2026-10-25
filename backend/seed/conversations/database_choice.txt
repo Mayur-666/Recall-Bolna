@@ -1,0 +1,5 @@
+Arjun: For the main application database, are we going with Postgres or MySQL?
+Priya: Postgres. We need pgvector for the search features.
+Mayur: Agreed. We decided on Postgres as the main application database.
+Arjun: I'll write the migration scripts with Alembic.
+Priya: Let's also turn on daily backups from the start.

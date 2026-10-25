@@ -1,0 +1,6 @@
+Neha: The ECS setup is taking much longer than expected. The networking configuration alone took two days.
+Mayur: How far is Render from working?
+Neha: I had it running in an afternoon as a test, including the database connection.
+Mayur: Then we're dropping ECS and moving the beta deployment to Render. It's not worth the time right now.
+Neha: Agreed. I'll migrate the staging environment to Render tomorrow.
+Mayur: Keep the ECS configuration in the repo in case we need to go back after the beta.

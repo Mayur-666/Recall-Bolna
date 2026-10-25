@@ -1,0 +1,11 @@
+Priya: For the live dashboard we need updates pushed to the client. Polling every few seconds won't scale once we have real users.
+Arjun: Server-sent events would be the simplest option.
+Priya: SSE is one-way though, and the mobile app needs to send acknowledgements back. I'd suggest WebSockets for the live updates.
+Mayur: I agree with Priya. WebSockets make sense for the live channel.
+Arjun: Fine by me, as long as the regular CRUD endpoints stay REST.
+Mayur: Okay, decision then: we go with REST for the core API plus WebSockets for live updates.
+Priya: I can prototype the WebSocket gateway this week.
+Mayur: I will write the auth spec for the WebSocket handshake and share it by Friday, October 23.
+Arjun: Should we version the API from day one?
+Mayur: Yes, let's prefix every route with v1.
+Priya: One open question is rate limiting on the socket. Let's revisit that next sprint.

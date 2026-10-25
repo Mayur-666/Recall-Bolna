@@ -1,0 +1,5 @@
+Ravi: For the analytics warehouse, the BI team only supports MySQL.
+Mayur: Then we decided on MySQL for the analytics database. The main app stays on Postgres.
+Ravi: I'll set up the nightly export job from Postgres into the warehouse.
+Mayur: Ravi, can you have the first export running by Wednesday?
+Ravi: Yes, I will have the first export running by Wednesday.

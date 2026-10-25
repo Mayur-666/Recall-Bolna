@@ -34,6 +34,11 @@ async def test_migration_creates_tables(db_engine):
         assert "USING hnsw (embedding vector_cosine_ops)" in defs
         assert "USING gin (search_tsv)" in defs
 
+        cols = await conn.execute(
+            text("SELECT column_name FROM information_schema.columns WHERE table_name='call_sessions'")
+        )
+        assert "bolna_run_id" in {r[0] for r in cols}
+
 
 async def test_dim_guard_raises_on_mismatch(db_engine):
     async with db_engine.connect() as conn:

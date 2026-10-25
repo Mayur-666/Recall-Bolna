@@ -64,6 +64,9 @@ class CallsService:
         except BolnaError as exc:
             raise await self._fail(cs, exc) from exc
         cs.status = "minted"
+        run_id = session.get("run_id")
+        if isinstance(run_id, str) and run_id:
+            cs.bolna_run_id = run_id[:64]
         await self.session.commit()
         get_event_bus().publish(cs.id, {"type": "call_session_created", "channel": "web"})
         return cs, session
@@ -90,12 +93,13 @@ class CallsService:
     async def refresh(self, user: User, call_session_id: uuid.UUID) -> tuple[CallSession, str | None]:
         """Pull the latest status/transcript from Bolna's execution API (when an execution id is known)."""
         cs = await self.get(user, call_session_id)
-        if not cs.bolna_execution_id:
+        execution_ref = cs.bolna_execution_id or cs.bolna_run_id
+        if not execution_ref:
             return cs, NO_EXECUTION_NOTE
         if cs.transcript:
             return cs, None
         try:
-            execution = await self.bolna.get_execution(cs.bolna_execution_id)
+            execution = await self.bolna.get_execution(execution_ref)
         except BolnaError as exc:
             return cs, f"Could not fetch the execution from Bolna ({exc.status})."
         await self.apply_execution(cs, execution)

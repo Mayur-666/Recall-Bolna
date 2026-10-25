@@ -1,6 +1,10 @@
+import asyncio
+import json
 import uuid
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_user
@@ -16,7 +20,8 @@ from app.schemas.call import (
     ToolCallOut,
     WebSessionOut,
 )
-from app.services.calls import CallsService
+from app.services.calls import CallsService, history_events
+from app.services.events import get_event_bus
 
 router = APIRouter(prefix="/calls", tags=["calls"])
 
@@ -65,3 +70,40 @@ async def end_call(
 ) -> CallSessionOut:
     cs, note = await CallsService(db).end(user, call_session_id)
     return _out(cs, note)
+
+
+KEEPALIVE_S = 15.0
+
+
+def _sse(event: dict[str, object]) -> str:
+    return f"data: {json.dumps(event, default=str)}\n\n"
+
+
+@router.get("/{call_session_id}/events")
+async def call_events(
+    call_session_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+) -> StreamingResponse:
+    """Server-sent events: persisted history first, then live backend-observed events."""
+    cs = await CallsService(db).get(user, call_session_id)
+    bus = get_event_bus()
+    queue = bus.register(cs.id)  # registered before reading history so nothing is missed
+    history = await history_events(db, cs)
+
+    async def stream() -> AsyncIterator[str]:
+        try:
+            for event in history:
+                yield _sse(event)
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=KEEPALIVE_S)
+                    yield _sse(event)
+                except TimeoutError:
+                    yield ": keep-alive\n\n"
+        finally:
+            bus.unregister(cs.id, queue)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

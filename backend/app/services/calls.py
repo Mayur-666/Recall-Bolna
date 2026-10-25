@@ -11,6 +11,7 @@ from app.core.errors import NotFoundError, ServiceUnavailableError, UpstreamErro
 from app.integrations.bolna_client import BolnaClient, BolnaError
 from app.models import CallSession, User
 from app.repositories.call_sessions import CallSessionsRepo
+from app.repositories.tool_calls import ToolCallsRepo
 from app.services.call_sessions import CallSessionService, build_user_data, redacted_user_data
 from app.services.events import get_event_bus
 
@@ -125,3 +126,40 @@ class CallsService:
         await self.session.commit()
         get_event_bus().publish(cs.id, {"type": "call_ended", "status": cs.status})
         return await self.refresh(user, call_session_id)
+
+
+async def history_events(session: AsyncSession, cs: CallSession) -> list[dict[str, Any]]:
+    """Persisted events for a call, so a reloaded page rebuilds the same live view."""
+    events: list[dict[str, Any]] = [{"type": "call_session_created", "channel": cs.channel}]
+    for call in await ToolCallsRepo(session).list_for_session(cs.user_id, cs.id):
+        events.append(
+            {
+                "type": "tool_call_started",
+                "tool_call_id": str(call.id),
+                "tool": call.tool_name,
+                "question": call.original_question,
+                "standalone_query": call.standalone_query,
+            }
+        )
+        if call.result_status in ("started",):
+            continue
+        if call.result_status in ("error", "not_found"):
+            events.append({"type": "tool_call_failed", "tool_call_id": str(call.id), "tool": call.tool_name})
+            continue
+        done: dict[str, Any] = {
+            "type": "tool_call_completed",
+            "tool_call_id": str(call.id),
+            "tool": call.tool_name,
+            "status": call.result_status,
+            "timings_ms": call.timings_ms,
+        }
+        if call.tool_name == "search_memories":
+            done["results"] = (call.result or {}).get("results", [])
+        else:
+            done["context"] = call.result
+        events.append(done)
+    if cs.ended_at is not None:
+        events.append({"type": "call_ended", "status": cs.status})
+    if cs.transcript:
+        events.append({"type": "transcript_available"})
+    return events

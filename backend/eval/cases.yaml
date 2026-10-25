@@ -19,7 +19,7 @@ cases:
     expect:
       status_in: [found]
       has_item: {match: render, state: decided}
-      if_present: {match: ecs, state: superseded}
+      if_present: {match: aws ecs, state: superseded}
 
   - id: conflict_or_separate_scope
     question: Which database did we choose?
@@ -28,11 +28,13 @@ cases:
       postgres_mysql_not_silently_merged: true
 
   - id: followup_who_said_that
+    # The agent sends the user's words plus the standalone rewrite (tool contract).
     question: Who said that?
+    standalone_query: Who suggested using WebSockets for the live updates?
     previous_ref_from: exact_name
     expect:
       status_in: [found, ambiguous]
-      top1_speaker_in: [Priya, "Priya, Arjun", "Priya, Arjun, Mayur", "Priya, Mayur"]
+      top3_mentions_speaker: Priya
 
   - id: no_match
     question: What did we decide about the office lease?
@@ -76,3 +78,37 @@ cases:
     expect:
       status_in: [found]
       degraded: true
+
+  # Held-out probes added after calibration (not used to choose thresholds).
+  - id: holdout_no_match_logo
+    question: What colour did we pick for the new logo?
+    expect:
+      status_in: [no_reliable_memory]
+
+  - id: holdout_no_match_accountant
+    question: Who is our accountant?
+    expect:
+      status_in: [no_reliable_memory]
+
+  - id: holdout_no_match_party
+    question: What's the plan for the office party?
+    expect:
+      status_in: [no_reliable_memory]
+
+  - id: holdout_paraphrase_why_render
+    question: Why did we stop using ECS?
+    expect:
+      status_in: [found]
+      top3_title_in: [Deployment follow-up, Deployment planning]
+
+  - id: holdout_paraphrase_auth_deadline
+    question: When is the auth spec due?
+    expect:
+      status_in: [found]
+      top3_title: API design sync
+
+  - id: holdout_paraphrase_font
+    question: Which font are we using in the web app?
+    expect:
+      status_in: [found]
+      top3_title: Design review notes

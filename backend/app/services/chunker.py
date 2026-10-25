@@ -30,6 +30,7 @@ class _Sentence:
     start: int
     end: int
     speaker: str | None
+    turn_start: bool = False  # first sentence of a labeled speaker turn
 
 
 def _split_long(text: str, start: int, speaker: str | None) -> list[_Sentence]:
@@ -53,6 +54,7 @@ def _split_long(text: str, start: int, speaker: str | None) -> list[_Sentence]:
 def _sentences(segments: list[Segment]) -> list[_Sentence]:
     out: list[_Sentence] = []
     for seg in segments:
+        first = True
         for m in _SENTENCE.finditer(seg.text):
             raw = m.group(0)
             if not raw.strip():
@@ -63,8 +65,22 @@ def _sentences(segments: list[Segment]) -> list[_Sentence]:
             if len(body) > MAX_PIECE_CHARS:
                 out.extend(_split_long(body, abs_start, seg.speaker))
             else:
-                out.append(_Sentence(abs_start, abs_start + len(body), seg.speaker))
+                out.append(
+                    _Sentence(abs_start, abs_start + len(body), seg.speaker, first and bool(seg.speaker))
+                )
+            first = False
     return out
+
+
+def _label_start(original: str, sentence: _Sentence) -> int:
+    """Start offset of the "Name:" label preceding a turn's first sentence, if it's on the same line."""
+    if not sentence.turn_start or not sentence.speaker:
+        return sentence.start
+    line_start = original.rfind("\n", 0, sentence.start) + 1
+    prefix = original[line_start : sentence.start]
+    if prefix.strip().lower() == f"{sentence.speaker.lower()}:":
+        return line_start + len(prefix) - len(prefix.lstrip())
+    return sentence.start
 
 
 def build_chunks(
@@ -91,7 +107,8 @@ def build_chunks(
                 break
             window.append(sentences[j])
             j += 1
-        start, end = window[0].start, window[-1].end
+        # Keep the speaker label when a chunk starts a turn, so the excerpt says who spoke.
+        start, end = _label_start(original, window[0]), window[-1].end
         speakers = list(dict.fromkeys(s.speaker for s in window if s.speaker))
         text = _WS.sub(" ", original[start:end]).strip()
         chunks.append(ChunkDraft(len(chunks), text, start, end, speakers))

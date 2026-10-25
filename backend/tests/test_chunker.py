@@ -27,7 +27,7 @@ def test_chunk_overlap_one_sentence():
     first_last_sentence = "I will write the auth spec by Friday."
     # 8 sentences, windows of 4 with overlap 1: the 4th sentence starts chunk 2.
     assert chunks[0].text.endswith("Agreed on WebSockets.")
-    assert chunks[1].text.startswith("Agreed on WebSockets.")
+    assert chunks[1].text.startswith("Mayur: Agreed on WebSockets.")
     assert any(first_last_sentence in c.text for c in chunks)
 
 
@@ -35,6 +35,14 @@ def test_chunk_never_starts_mid_sentence():
     chunks = build_chunks(parse_transcript(TEXT, None), TEXT)
     for c in chunks:
         assert c.text[0].isupper()
+
+
+def test_chunk_starting_a_turn_keeps_speaker_label():
+    chunks = build_chunks(parse_transcript(TEXT, None), TEXT)
+    assert chunks[0].text.startswith("Priya: We need live updates.")
+    assert TEXT[chunks[0].char_start : chunks[0].char_start + 6] == "Priya:"
+    # A chunk starting mid-turn has no label to include.
+    assert chunks[1].text.startswith("Mayur: Agreed on WebSockets.")
 
 
 def test_chunk_speakers_recorded():

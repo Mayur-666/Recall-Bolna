@@ -87,3 +87,17 @@ async def test_chat_json_gives_up_after_second_bad_json():
     respx.post(f"{BASE}/chat/completions").mock(side_effect=[_chat("nope"), _chat("still nope")])
     with pytest.raises(ModelError):
         await ModelClient().chat_json("s", "u", {"type": "object"})
+
+
+@respx.mock
+async def test_embed_timeout_recycles_http_connection():
+    # An aborted request leaves the pooled connection stalling the next 1-2 calls (measured
+    # against real Ollama: 393-569 ms and one timeout); a fresh client avoids that.
+    respx.post(f"{BASE}/embeddings").mock(side_effect=[httpx.ReadTimeout("slow"), _emb_response(1)])
+    client = ModelClient()
+    before = client._http
+    with pytest.raises(EmbeddingTimeout):
+        await client.embed(["x"], kind="query", timeout_s=0.1)
+    assert client._http is not before
+    assert before.is_closed
+    await client.embed(["y"], kind="query")

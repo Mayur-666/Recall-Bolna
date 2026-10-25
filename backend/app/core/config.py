@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     EXTRACT_MODEL: str = "qwen2.5:7b-instruct"
 
     # --- retrieval ---
-    RETRIEVAL_MIN_VECTOR_SIM: float = 0.55
+    RETRIEVAL_MIN_VECTOR_SIM: float = 0.68  # calibrated on nomic-embed-text, see docs/eval-results.md
     AMBIGUITY_MARGIN: float = 0.15
     LINK_MIN_SIM: float = 0.75
     RRF_K: int = 60

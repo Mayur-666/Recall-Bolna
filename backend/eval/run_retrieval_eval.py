@@ -44,15 +44,26 @@ def check(case: dict[str, Any], r: SearchResult, today: date) -> list[str]:
         errs.append(f"status {r.status} not in {exp['status_in']}")
     if "top3_title" in exp and exp["top3_title"] not in titles[:3]:
         errs.append(f"'{exp['top3_title']}' not in top 3 {titles[:3]}")
+    if "top3_title_in" in exp and not set(exp["top3_title_in"]) & set(titles[:3]):
+        errs.append(f"none of {exp['top3_title_in']} in top 3 {titles[:3]}")
     if "top3_speaker" in exp and not any(exp["top3_speaker"] in (e.speaker or "") for e in r.results[:3]):
         errs.append(f"speaker {exp['top3_speaker']} not in top 3")
+    if "top3_mentions_speaker" in exp:
+        who = exp["top3_mentions_speaker"]
+        if not any(who in (e.speaker or "") or f"{who}:" in e.excerpt for e in r.results[:3]):
+            errs.append(f"{who} not attributed in top 3")
     if "top1_speaker_in" in exp and (not r.results or r.results[0].speaker not in exp["top1_speaker_in"]):
         errs.append(
             f"top speaker {r.results[0].speaker if r.results else None} not in {exp['top1_speaker_in']}"
         )
     if exp.get("all_dates_in") == "last_week":
         d0, d1 = parse_relative_range("last week", today) or (today, today)
-        bad = [str(e.conversation_date) for e in r.results if not d0 <= e.conversation_date <= d1]
+        # Decisions pulled in because they supersede/conflict with a result may lie outside the window.
+        bad = [
+            str(e.conversation_date)
+            for e in r.results
+            if e.related_to_ref is None and not d0 <= e.conversation_date <= d1
+        ]
         if bad:
             errs.append(f"results outside last week {d0}..{d1}: {bad}")
     if "has_item" in exp:
@@ -148,7 +159,8 @@ async def run(out: Path) -> int:
         errs = check(case, r, today)
         rows.append((case["id"], not errs, r.status, "; ".join(errs)))
         diag = ", ".join(
-            f"{e.conversation_title}/{e.kind}/{e.decision_state or '-'}/{e.score:.4f}{'/weak' if e.weak else ''}"
+            f"{e.conversation_title}/{e.kind}/{e.decision_state or '-'}/fused {e.score:.4f}/sim {e.vector_similarity}"
+            f"{'/weak' if e.weak else ''}{'/related' if e.related_to_ref else ''}"
             for e in r.results
         )
         diagnostics.append(
@@ -196,7 +208,7 @@ async def run(out: Path) -> int:
         "",
         f"Stage latency: {stage_line}",
         "",
-        "Returned evidence per case (title/kind/state/fused score):",
+        "Returned evidence per case (title/kind/state/fused score/vector similarity):",
         "",
         *diagnostics,
         "",

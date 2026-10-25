@@ -43,11 +43,20 @@ def _normalize(vec: list[float]) -> list[float]:
 class ModelClient:
     def __init__(self, http: httpx.AsyncClient | None = None) -> None:
         self.settings = get_settings()
-        self._http = http or httpx.AsyncClient(
+        self._http = http or self._new_http()
+
+    def _new_http(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
             base_url=self.settings.MODEL_BASE_URL,
             headers={"Authorization": f"Bearer {self.settings.MODEL_API_KEY}"},
             timeout=120.0,
         )
+
+    async def _recycle_http(self) -> None:
+        # A request aborted by our timeout leaves its pooled connection stalling the next
+        # calls (measured on Ollama: ~0.4-0.6 s or another timeout). Start clean instead.
+        old, self._http = self._http, self._new_http()
+        await old.aclose()
 
     async def embed(
         self,
@@ -61,6 +70,7 @@ class ModelClient:
         try:
             resp = await self._http.post("/embeddings", json=payload, timeout=timeout_s or 60.0)
         except httpx.TimeoutException as exc:
+            await self._recycle_http()
             raise EmbeddingTimeout("embedding request timed out") from exc
         except httpx.HTTPError as exc:
             raise ModelError(f"embedding request failed: {type(exc).__name__}") from exc

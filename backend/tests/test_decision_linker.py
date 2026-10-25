@@ -38,14 +38,14 @@ class Scenario:
             lambda t: "deployment provider" if t.startswith("deployment provider") else t
         )
         self.judge_answer = judge_answer or {
-            "explicit_change": True,
+            "relation": "replaces",
             "quote": "We're dropping ECS and moving to Render.",
         }
         self.judge_calls = 0
         self.model.chat_fn = self._chat
 
     def _chat(self, system, user_msg):
-        if "explicit_change" in system:
+        if "relation" in system:
             self.judge_calls += 1
             return self.judge_answer
         if "AWS ECS" in user_msg:
@@ -100,7 +100,7 @@ async def test_explicit_change_supersedes_earlier(make_user):
 
 async def test_mere_discussion_does_not_supersede(make_user):
     user, _ = await make_user()
-    sc = Scenario(judge_answer={"explicit_change": False, "quote": ""})
+    sc = Scenario(judge_answer={"relation": "compatible", "quote": ""})
     await ingest(user, ECS_TEXT, 5, sc.model)
     await ingest(user, DISCUSS_TEXT, 12, sc.model)
     d = await decisions(user)
@@ -137,7 +137,7 @@ async def test_delete_recomputes(make_user):
 
 async def test_unlocatable_judge_quote_treated_as_no(make_user):
     user, _ = await make_user()
-    sc = Scenario(judge_answer={"explicit_change": True, "quote": "We abandoned ECS completely last year."})
+    sc = Scenario(judge_answer={"relation": "replaces", "quote": "We abandoned ECS completely last year."})
     await ingest(user, ECS_TEXT, 5, sc.model)
     await ingest(user, RENDER_TEXT, 12, sc.model)
     d = await decisions(user)
@@ -152,3 +152,35 @@ async def test_never_links_across_users(make_user):
     await ingest(b, RENDER_TEXT, 12, sc.model)
     assert (await decisions(a))["Host on AWS ECS."].decision_state == "decided"
     assert sc.judge_calls == 0
+
+
+async def test_contradiction_marks_conflict_not_supersession(make_user):
+    user, _ = await make_user()
+    sc = Scenario(judge_answer={"relation": "contradicts", "quote": ""})
+    await ingest(user, ECS_TEXT, 5, sc.model)
+    await ingest(user, DISCUSS_TEXT, 12, sc.model)
+    d = await decisions(user)
+    assert d["Host on AWS ECS."].decision_state == "decided"
+    assert d["Use Render for the blog."].decision_state == "decided"
+    assert d["Use Render for the blog."].conflict_with_id == d["Host on AWS ECS."].id
+
+
+async def test_compatible_decisions_not_conflicting(make_user):
+    user, _ = await make_user()
+    sc = Scenario(judge_answer={"relation": "compatible", "quote": ""})
+    await ingest(user, ECS_TEXT, 5, sc.model)
+    await ingest(user, DISCUSS_TEXT, 12, sc.model)
+    d = await decisions(user)
+    assert d["Use Render for the blog."].conflict_with_id is None
+    assert d["Host on AWS ECS."].conflict_with_id is None
+
+
+async def test_relink_clears_stale_conflicts(make_user):
+    user, _ = await make_user()
+    sc = Scenario(judge_answer={"relation": "contradicts", "quote": ""})
+    await ingest(user, ECS_TEXT, 5, sc.model)
+    blog = await ingest(user, DISCUSS_TEXT, 12, sc.model)
+    async with get_sessionmaker()() as s:
+        await IngestionService(s, sc.model).delete(user.id, blog)
+        await s.commit()
+    assert (await decisions(user))["Host on AWS ECS."].conflict_with_id is None

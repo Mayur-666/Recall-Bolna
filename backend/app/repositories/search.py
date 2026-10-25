@@ -120,18 +120,16 @@ class SearchRepo:
         )
         return {f"{kind}:{r[0]}": float(r[1]) for r in rows}
 
-    async def conflicting_decisions(
-        self, user_id: uuid.UUID, item_id: uuid.UUID, min_sim: float
-    ) -> list[uuid.UUID]:
+    async def conflict_partners(self, user_id: uuid.UUID, item_id: uuid.UUID) -> list[uuid.UUID]:
+        """Decisions explicitly linked as contradicting this one (in either direction)."""
         rows = await self.session.execute(
             text(
-                "SELECT m.id FROM memory_items m, memory_items s, conversations v "
-                "WHERE s.id = :sid AND s.user_id = :uid AND m.user_id = :uid AND m.id <> s.id "
-                "AND v.id = m.conversation_id AND v.status = 'ready' "
-                "AND m.kind = 'decision' AND m.decision_state = 'decided' AND s.decision_state = 'decided' "
-                "AND lower(m.statement) <> lower(s.statement) "
-                "AND 1 - (m.topic_embedding <=> s.topic_embedding) >= :min_sim LIMIT 3"
+                "SELECT m.id FROM memory_items m JOIN conversations v ON v.id = m.conversation_id, "
+                "memory_items s "
+                "WHERE s.id = :sid AND s.user_id = :uid AND m.user_id = :uid AND v.status = 'ready' "
+                "AND m.id <> s.id AND m.decision_state = 'decided' "
+                "AND (m.id = s.conflict_with_id OR m.conflict_with_id = s.id) LIMIT 3"
             ),
-            {"sid": item_id, "uid": user_id, "min_sim": min_sim},
+            {"sid": item_id, "uid": user_id},
         )
         return [r[0] for r in rows]

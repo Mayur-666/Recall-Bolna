@@ -186,10 +186,14 @@ class RetrievalService:
         if qvec is not None:
             await self._fill_similarity(user_id, cands, qvec)
         texts = await self._coverage_texts(user_id, list(cands))
+        # "What did we decide last week?": the time window is the whole topic, so the
+        # decisions/commitments found inside it count (all lists were filtered by the window).
+        window_only = window is not None and not topic_tokens and not names
+        actionable = await self._actionable_keys(user_id, list(cands)) if window_only else set()
         passing = [
             c
             for c in sorted(cands.values(), key=lambda c: -c.fused)
-            if self._passes(c, texts, topic_tokens, names, degraded)
+            if self._passes(c, texts, topic_tokens, names, degraded) or c.key in actionable
         ]
         timings["fuse"] = round((time.perf_counter() - tf) * 1000, 1)
 
@@ -284,6 +288,19 @@ class RetrievalService:
             return True
         return False
 
+    async def _actionable_keys(self, user_id: uuid.UUID, keys: list[str]) -> set[str]:
+        item_ids = [uuid.UUID(k[2:]) for k in keys if k[0] == "m"]
+        if not item_ids:
+            return set()
+        rows = await self.session.execute(
+            select(MemoryItem.id).where(
+                MemoryItem.user_id == user_id,
+                MemoryItem.id.in_(item_ids),
+                MemoryItem.kind.in_(("decision", "commitment", "action_item", "date")),
+            )
+        )
+        return {f"m:{r[0]}" for r in rows}
+
     async def _coverage_texts(self, user_id: uuid.UUID, keys: list[str]) -> dict[str, str]:
         chunk_ids = [uuid.UUID(k[2:]) for k in keys if k[0] == "c"]
         item_ids = [uuid.UUID(k[2:]) for k in keys if k[0] == "m"]
@@ -330,6 +347,8 @@ class RetrievalService:
         for key in keys:
             kind, rid = key[0], uuid.UUID(key[2:])
             score = round(cands[key].fused, 5) if key in cands else 0.0
+            sim = cands[key].vec_sim if key in cands else None
+            vsim = round(sim, 4) if sim is not None else None
             if kind == "c":
                 row = (
                     await self.session.execute(
@@ -352,11 +371,13 @@ class RetrievalService:
                         speaker=", ".join(chunk.speakers) if chunk.speakers else None,
                         excerpt=truncate(chunk.text, limit),
                         score=score,
+                        vector_similarity=vsim,
                     )
                 )
             else:
                 ev = await self._item_evidence(user_id, rid, today, score)
                 if ev is not None:
+                    ev.vector_similarity = vsim
                     out.append(ev)
         return out
 
@@ -404,9 +425,7 @@ class RetrievalService:
             if e.superseded_by_ref:
                 partners.append(e.superseded_by_ref)
             if e.kind == "decision" and e.decision_state == "decided":
-                ids = await self.repo.conflicting_decisions(
-                    user_id, uuid.UUID(e.ref[2:]), self.settings.LINK_MIN_SIM
-                )
+                ids = await self.repo.conflict_partners(user_id, uuid.UUID(e.ref[2:]))
                 if ids:
                     e.conflict = True
                     partners.extend(f"m:{pid}" for pid in ids)
@@ -423,6 +442,7 @@ class RetrievalService:
                     continue
                 if ref != e.superseded_by_ref:
                     ev.conflict = True
+                ev.related_to_ref = e.ref
                 out.insert(insert_at, ev)
                 present.add(ref)
                 insert_at += 1

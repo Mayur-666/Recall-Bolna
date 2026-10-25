@@ -123,23 +123,62 @@ async def test_superseded_decision_marked(make_user):
     assert "changed" in res.guidance
 
 
-async def test_unlinked_decided_pair_conflict_true(make_user):
-    user, _ = await make_user()
-    await seed(
+async def _db_pair(user):
+    _, _, (pg,) = await seed(
         user, "DB choice", date(2026, 10, 1), chunks=["We decided on Postgres as the database."],
         items=[{"topic": "database choice", "statement": "Use Postgres as the database.",
                 "quote": "We decided on Postgres as the database.", "state": "decided"}],
     )  # fmt: skip
-    await seed(
+    _, _, (my,) = await seed(
         user, "Analytics sync", date(2026, 10, 22), chunks=["We decided on MySQL as the database."],
         items=[{"topic": "database choice", "statement": "Use MySQL as the database.",
                 "quote": "We decided on MySQL as the database.", "state": "decided"}],
     )  # fmt: skip
-    res = await search(user, "Which database did we choose?")
-    decided = [r for r in res.results if r.kind == "decision"]
-    assert len(decided) == 2
-    assert all(r.conflict for r in decided)
+    return pg, my
+
+
+async def test_conflicting_pair_flagged_with_partner(make_user):
+    user, _ = await make_user()
+    pg, my = await _db_pair(user)
+    async with get_sessionmaker()() as s:
+        row = await s.get(MemoryItem, my.id)
+        row.conflict_with_id = pg.id
+        await s.commit()
+    res = await search(user, "Which database did we choose, Postgres?")
+    decided = {r.ref: r for r in res.results if r.kind == "decision"}
+    assert set(decided) == {f"m:{pg.id}", f"m:{my.id}"}
+    assert all(r.conflict for r in decided.values())
     assert "disagree" in res.guidance
+
+
+async def test_same_topic_without_conflict_link_not_flagged(make_user):
+    user, _ = await make_user()
+    await _db_pair(user)
+    res = await search(user, "Which database did we choose?")
+    assert not any(r.conflict for r in res.results)
+    assert "disagree" not in res.guidance
+
+
+async def test_partner_items_marked_related_and_similarity_exposed(make_user):
+    user, _ = await make_user()
+    _, _, (ecs,) = await seed(
+        user, "Deploy planning", date(2026, 10, 14), chunks=["Let's go with AWS ECS for hosting."],
+        items=[{"topic": "deployment provider", "statement": "Host on AWS ECS.",
+                "quote": "Let's go with AWS ECS for hosting.", "state": "superseded"}],
+    )  # fmt: skip
+    _, _, (render,) = await seed(
+        user, "Deploy follow-up", date(2026, 10, 20), chunks=["Moving hosting over to Render now."],
+        items=[{"topic": "hosting move", "statement": "Move hosting to Render.",
+                "quote": "Moving hosting over to Render now.", "state": "decided"}],
+    )  # fmt: skip
+    async with get_sessionmaker()() as s:
+        (await s.get(MemoryItem, ecs.id)).superseded_by_id = render.id
+        await s.commit()
+    res = await search(user, "What did we decide about AWS ECS hosting last week?")
+    by_ref = {r.ref: r for r in res.results}
+    assert by_ref[f"m:{render.id}"].related_to_ref == f"m:{ecs.id}"
+    assert by_ref[f"m:{ecs.id}"].related_to_ref is None
+    assert by_ref[f"m:{ecs.id}"].vector_similarity is not None
 
 
 async def test_no_match_returns_no_reliable_memory_with_weak_flag(make_user):
@@ -281,3 +320,29 @@ async def test_search_route_requires_auth_and_scopes_to_user(client, make_user, 
     body = resp.json()
     assert body["status"] == "found"
     assert body["results"][0]["conversation_title"] == "API sync"
+
+
+async def test_time_scoped_generic_question_lists_decisions_in_window(make_user, monkeypatch):
+    # With a strict similarity floor, a question whose only content is a time window
+    # ("what did we decide last week?") still returns the decisions inside that window.
+    monkeypatch.setattr(get_settings(), "RETRIEVAL_MIN_VECTOR_SIM", 0.99)
+    user, _ = await make_user()
+    await seed(user, "Sprint review", date(2026, 10, 14), chunks=["Let's ship the export feature first."],
+               items=[{"topic": "release order", "statement": "Ship the export feature first.",
+                       "quote": "Let's ship the export feature first.", "state": "decided"}])  # fmt: skip
+    await seed(user, "Old review", date(2026, 9, 2), chunks=["Let's ship billing first."],
+               items=[{"topic": "release order", "statement": "Ship billing first.",
+                       "quote": "Let's ship billing first.", "state": "decided"}])  # fmt: skip
+    res = await search(user, "What did we decide last week?")
+    assert res.status == "found"
+    assert [r.conversation_title for r in res.results if r.kind == "decision"] == ["Sprint review"]
+
+
+async def test_generic_question_without_window_still_abstains(make_user, monkeypatch):
+    monkeypatch.setattr(get_settings(), "RETRIEVAL_MIN_VECTOR_SIM", 0.99)
+    user, _ = await make_user()
+    await seed(user, "Sprint review", date(2026, 10, 14), chunks=["Let's ship the export feature first."],
+               items=[{"topic": "release order", "statement": "Ship the export feature first.",
+                       "quote": "Let's ship the export feature first.", "state": "decided"}])  # fmt: skip
+    res = await search(user, "What did we decide?")
+    assert res.status == "no_reliable_memory"

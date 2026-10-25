@@ -29,6 +29,9 @@ class Evidence(BaseModel):
     owner_is_user: bool = False
     due_date: date | None = None
     score: float = 0.0
+    vector_similarity: float | None = None
+    # Set on decisions pulled in because they supersede or conflict with another result.
+    related_to_ref: str | None = None
     weak: bool = False
 
 

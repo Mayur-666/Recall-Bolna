@@ -33,6 +33,11 @@ class MemoryItem(IdMixin, CreatedAtMixin, Base):
     superseded_by_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("memory_items.id", ondelete="SET NULL")
     )
+    # Set by the decision linker when a later decision explicitly contradicts an earlier one
+    # without replacing it (both stay "decided"; answers must present both).
+    conflict_with_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("memory_items.id", ondelete="SET NULL")
+    )
     evidence_quote: Mapped[str] = mapped_column(Text)
     char_start: Mapped[int] = mapped_column(Integer)
     char_end: Mapped[int] = mapped_column(Integer)

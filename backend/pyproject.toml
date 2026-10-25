@@ -25,6 +25,8 @@ plugins = ["pydantic.mypy"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]
+"scripts/*" = ["E501"]
+"app/bolna/agent_config.py" = ["E501"]  # long user-facing tool descriptions
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Query", "fastapi.Header"]

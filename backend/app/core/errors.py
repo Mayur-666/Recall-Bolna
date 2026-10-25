@@ -58,6 +58,12 @@ class RateLimitError(AppError):
     message = "Too many requests."
 
 
+class ServiceUnavailableError(AppError):
+    status_code = 503
+    code = "not_configured"
+    message = "This feature is not configured."
+
+
 class UpstreamError(AppError):
     status_code = 502
     code = "upstream_error"

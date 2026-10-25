@@ -38,12 +38,20 @@ async def bolna_tool_auth(request: Request) -> None:
     expected = get_settings().RECALL_TOOL_TOKEN
     supplied = request.headers.get("authorization", "")
     if not expected or not hmac.compare_digest(supplied.encode(), f"Bearer {expected}".encode()):
+        log.warning("tool call rejected: bad or missing tool bearer token")
         raise AuthError("Invalid tool credentials.")
 
 
 async def _open_call(db: AsyncSession, token: str | None, execution_id: str | None) -> CallSession:
     service = CallSessionService(db)
-    cs = await service.resolve(token)
+    try:
+        cs = await service.resolve(token)
+    except AuthError:
+        # Visible in `docker compose logs backend`; the token itself is never logged.
+        log.warning(
+            "tool call rejected: recall_session %s", "missing/placeholder" if not token else "unknown/expired"
+        )
+        raise
     limit = get_settings().TOOL_RATE_LIMIT_PER_MIN
     if await ToolCallsRepo(db).count_since(cs.id, 60) >= limit:
         raise RateLimitError("Too many memory searches in this call.")

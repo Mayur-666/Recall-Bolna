@@ -4,9 +4,17 @@ import os
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://recall:recall@localhost:5432/recall_test"
 )
-os.environ.setdefault("WORKER_ENABLED", "false")
-os.environ.setdefault("JWT_SECRET", "test-secret")
-os.environ.setdefault("RECALL_TOOL_TOKEN", "test-tool-token")
+# Forced test values: never the developer's real secrets, and never a real Bolna account.
+os.environ.update(
+    {
+        "WORKER_ENABLED": "false",
+        "JWT_SECRET": "test-secret",
+        "RECALL_TOOL_TOKEN": "test-tool-token",
+        "BOLNA_API_KEY": "",
+        "BOLNA_AGENT_ID": "",
+        "PUBLIC_BASE_URL": "",
+    }
+)
 
 import asyncio  # noqa: E402
 import subprocess  # noqa: E402

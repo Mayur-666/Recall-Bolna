@@ -11,6 +11,7 @@ from app.core.logging import configure_logging
 from app.db.dim_guard import check_embedding_dim
 from app.db.session import get_engine
 from app.integrations.model_client import get_model_client
+from app.workers.ingestion_worker import run_worker
 
 
 @asynccontextmanager
@@ -19,8 +20,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await check_embedding_dim(conn, get_settings().EMBED_DIM)
     # Load the embedding model in the background so the first question isn't a cold start.
     warm = asyncio.create_task(get_model_client().warm_up())
+    stop = asyncio.Event()
+    worker = asyncio.create_task(run_worker(stop)) if get_settings().WORKER_ENABLED else None
     yield
+    stop.set()
     warm.cancel()
+    if worker is not None:
+        await worker
 
 
 def create_app() -> FastAPI:

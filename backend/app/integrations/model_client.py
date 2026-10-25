@@ -8,7 +8,7 @@ import json
 import logging
 import math
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import httpx
 
@@ -23,6 +23,16 @@ class ModelError(Exception):
 
 class EmbeddingTimeout(ModelError):
     pass
+
+
+class ModelClientProtocol(Protocol):
+    async def embed(
+        self, texts: list[str], kind: Literal["query", "document"], timeout_s: float | None = None
+    ) -> list[list[float]]: ...
+
+    async def chat_json(
+        self, system: str, user: str, json_schema: dict[str, Any], temperature: float = 0.0
+    ) -> dict[str, Any]: ...
 
 
 def _normalize(vec: list[float]) -> list[float]:

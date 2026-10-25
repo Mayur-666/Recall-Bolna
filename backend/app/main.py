@@ -5,6 +5,8 @@ from fastapi import FastAPI
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.errors import register_error_handlers
+from app.core.logging import configure_logging
 from app.db.dim_guard import check_embedding_dim
 from app.db.session import get_engine
 
@@ -17,7 +19,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    configure_logging()
     app = FastAPI(title="Recall API", version="0.1.0", lifespan=lifespan)
+    register_error_handlers(app)
     app.include_router(api_router)
     return app
 

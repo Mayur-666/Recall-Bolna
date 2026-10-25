@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     DEMO_PASSWORD: str = ""
     DEMO_NAME: str = "Mayur"
     APP_TIMEZONE: str = "Asia/Kolkata"
+    # The web app is served over plain http on localhost in dev; set true behind HTTPS.
+    COOKIE_SECURE: bool = False
 
     # --- model (embeddings + extraction) ---
     MODEL_BASE_URL: str = "http://ollama:11434/v1"

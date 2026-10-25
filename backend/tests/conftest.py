@@ -38,3 +38,33 @@ async def client(db_engine) -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest.fixture
+async def make_user(db_engine):
+    """Create a user with a unique email; returns (user, password)."""
+    import uuid
+
+    from app.db.session import get_sessionmaker
+    from app.services.auth import AuthService
+
+    async def _make(name: str = "Tester", password: str = "pw-123456"):
+        email = f"{uuid.uuid4().hex[:10]}@test.local"
+        async with get_sessionmaker()() as session:
+            user = await AuthService(session).ensure_user(email, password, name)
+            await session.commit()
+        return user, password
+
+    return _make
+
+
+@pytest.fixture
+async def login(client):
+    """Log the shared client in as the given user (cookie stored on the client)."""
+
+    async def _login(user, password):
+        resp = await client.post("/api/v1/auth/login", json={"email": user.email, "password": password})
+        assert resp.status_code == 200, resp.text
+        return resp
+
+    return _login

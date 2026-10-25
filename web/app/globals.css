@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: #f7f6f2;
+  --surface: #ffffff;
+  --ink: #1d2433;
+  --muted: #5b6475;
+  --line: #e4e2db;
+  --accent: #4f46e5;
+  --accent-soft: #eef0ff;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+mark.evidence {
+  background: #fff1b8;
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+  scroll-margin-top: 120px;
+}
+
+mark.evidence.active {
+  background: #ffd84d;
+  box-shadow: 0 0 0 2px #f5b400;
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 18px rgba(79, 70, 229, 0);
+  }
+}
+
+.live-ring {
+  animation: pulse-ring 1.6s ease-out infinite;
+}

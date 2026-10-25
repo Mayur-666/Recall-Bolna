@@ -71,6 +71,16 @@ services:
       postgres:
         condition: service_healthy
 
+  web:
+    build:
+      context: ./web
+      args:
+        BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
   tunnel:
     image: cloudflare/cloudflared:latest
     profiles: ["tunnel"]

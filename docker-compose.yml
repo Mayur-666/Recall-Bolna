@@ -1,0 +1,78 @@
+name: recall-bolna
+
+x-env: &env
+  env_file:
+    - path: .env
+      required: false
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-recall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-recall}
+      POSTGRES_DB: ${POSTGRES_DB:-recall}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-recall}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ollama-init:
+    image: ollama/ollama:latest
+    <<: *env
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        sleep 3 &&
+        ollama pull $${EMBED_MODEL:-nomic-embed-text} &&
+        ollama pull $${EXTRACT_MODEL:-qwen2.5:7b-instruct}
+    restart: "no"
+
+  backend:
+    build: ./backend
+    <<: *env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-recall}:${POSTGRES_PASSWORD:-recall}@postgres:5432/${POSTGRES_DB:-recall}
+      TEST_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-recall}:${POSTGRES_PASSWORD:-recall}@postgres:5432/recall_test
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate --url http://backend:8000
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  ollama:

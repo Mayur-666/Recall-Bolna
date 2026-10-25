@@ -1,2 +1,14 @@
 docs/superpowers/*
 docs/*.md
+.superpowers/
+.env
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+.next/
+web/test-results/
+web/playwright-report/

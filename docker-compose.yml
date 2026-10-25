@@ -8,6 +8,7 @@ x-env: &env
 services:
   postgres:
     image: pgvector/pgvector:pg16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-recall}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-recall}
@@ -25,6 +26,7 @@ services:
 
   ollama:
     image: ollama/ollama:latest
+    restart: unless-stopped
     environment:
       OLLAMA_KEEP_ALIVE: 30m
     volumes:

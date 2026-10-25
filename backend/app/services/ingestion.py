@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.errors import ConflictError, NotFoundError, PayloadTooLargeError, ValidationAppError
+from app.integrations.model_client import ModelClientProtocol, get_model_client
 from app.models import Conversation
 from app.repositories.conversations import ConversationsRepo
 from app.repositories.jobs import JobsRepo
@@ -44,8 +45,9 @@ def decode_upload(filename: str, data: bytes) -> str:
 
 
 class IngestionService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, model: ModelClientProtocol | None = None) -> None:
         self.session = session
+        self.model = model
         self.conversations = ConversationsRepo(session)
         self.jobs = JobsRepo(session)
 
@@ -111,5 +113,13 @@ class IngestionService:
         return conv
 
     async def delete(self, user_id: uuid.UUID, conversation_id: uuid.UUID) -> None:
+        from app.services.decision_linker import DecisionLinker
+
         await self.get(user_id, conversation_id)
+        linker = DecisionLinker(self.session, self.model or get_model_client())
+        own = await linker.decision_ids_for_conversation(user_id, conversation_id)
+        neighbors = [i for i in await linker.neighbor_ids(user_id, own) if i not in own]
         await self.conversations.delete(user_id, conversation_id)
+        await self.session.flush()
+        # Decisions this conversation had superseded get their links recomputed without it.
+        await linker.relink_after_delete(user_id, neighbors)

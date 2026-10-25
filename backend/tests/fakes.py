@@ -31,6 +31,7 @@ class FakeModelClient:
         self.embed_calls: list[tuple[list[str], str]] = []
         self.chat_calls: list[tuple[str, str]] = []
         self.chat_fn: Any = None  # optional callable(system, user) -> dict
+        self.embed_key_fn: Any = None  # optional callable(text) -> text actually embedded
 
     async def embed(
         self, texts: list[str], kind: Literal["query", "document"], timeout_s: float | None = None
@@ -40,7 +41,8 @@ class FakeModelClient:
             raise EmbeddingTimeout("fake timeout")
         if self.embed_fail:
             raise self.embed_fail
-        return [bow_vector(t) for t in texts]
+        key = self.embed_key_fn or (lambda t: t)
+        return [bow_vector(key(t)) for t in texts]
 
     async def chat_json(
         self, system: str, user: str, json_schema: dict[str, Any], temperature: float = 0.0

@@ -19,6 +19,7 @@ from app.models import Chunk, Conversation, IngestionJob, TranscriptSegment
 from app.repositories.chunks import ChunksRepo, clear_derived
 from app.repositories.jobs import JobsRepo
 from app.services.chunker import ChunkDraft, build_chunks
+from app.services.decision_linker import DecisionLinker
 from app.services.extraction import ExtractionService
 from app.services.transcript_parser import parse_transcript
 
@@ -117,8 +118,20 @@ async def process_job(job_id: uuid.UUID, model: ModelClientProtocol | None = Non
         async with sm() as session:
             conv = await session.get(Conversation, job.conversation_id)
             assert conv is not None
+            linker = DecisionLinker(session, model)
+            # On a retry, decisions elsewhere may have been linked to this conversation's old ones.
+            old_ids = await linker.decision_ids_for_conversation(conv.user_id, conv.id)
+            old_neighbors = [i for i in await linker.neighbor_ids(conv.user_id, old_ids) if i not in old_ids]
             await clear_derived(session, conv.user_id, conv.id)
             timings = await _build(session, conv, model)
+            t_link = time.perf_counter()
+            link = await linker.link_conversation(conv.user_id, conv.id, extra_ids=old_neighbors)
+            timings["link_ms"] = round((time.perf_counter() - t_link) * 1000, 1)
+            timings["linking"] = {
+                "cluster": link.cluster,
+                "judged": link.judged,
+                "superseded": link.superseded,
+            }
             conv.status = "ready"
             conv.error_message = None
             job_row = await session.get(IngestionJob, job_id)

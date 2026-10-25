@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import current_user
 from app.db.session import get_db
 from app.models import User
+from app.services.memory_graph import memory_graph
 from app.services.overview import list_memories, overview
 
 router = APIRouter(tags=["memories"])
@@ -16,6 +17,13 @@ async def get_overview(
     user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     return await overview(db, user.id)
+
+
+@router.get("/memories/graph")
+async def get_memory_graph(
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    return await memory_graph(db, user.id)
 
 
 @router.get("/memories")

@@ -149,3 +149,24 @@ export type CallEvent =
   | { type: "tool_call_failed"; tool_call_id: string; tool: string }
   | { type: "call_ended"; status: string }
   | { type: "transcript_available" };
+
+export interface MemoryNode {
+  id: string;
+  kind: MemoryKind;
+  statement: string;
+  topic: string;
+  decision_state: DecisionState | null;
+  owner_is_user: boolean;
+  speaker: string | null;
+  conversation_id: string;
+  conversation_title: string;
+  conversation_date: string;
+  chunk_ref: string | null;
+  cluster: number | null;
+}
+
+export interface MemoryGraph {
+  nodes: MemoryNode[];
+  clusters: { id: number; label: string; size: number }[];
+  edges: { a: string; b: string; type: "similar" | "supersedes" | "conflicts"; weight: number }[];
+}

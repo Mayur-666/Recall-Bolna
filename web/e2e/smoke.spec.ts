@@ -1,15 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-const EMAIL = process.env.DEMO_EMAIL ?? "demo@recall.local";
-const PASSWORD = process.env.DEMO_PASSWORD ?? "";
-
-export async function login(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/dashboard/);
-}
+import { EMAIL, PASSWORD, login } from "./helpers";
 
 test("unauthenticated visit redirects to login", async ({ page }) => {
   await page.goto("/");

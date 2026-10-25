@@ -24,10 +24,10 @@ export function Nav() {
   }
 
   return (
-    <header className="sticky top-0 z-10 border-b border-line bg-paper/90 backdrop-blur">
+    <header className="sticky top-0 z-10 border-b border-line bg-paper/70 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
         <Link href="/dashboard" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent text-sm text-white">R</span>
+          <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-[#7c5cff] to-[#3ee6c4] text-sm font-bold text-[#061018]">R</span>
           Recall
         </Link>
         <nav className="flex flex-1 gap-1 text-sm">

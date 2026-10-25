@@ -7,14 +7,17 @@ export default {
       colors: {
         paper: "var(--paper)",
         surface: "var(--surface)",
+        "surface-solid": "var(--surface-solid)",
         ink: "var(--ink)",
         muted: "var(--muted)",
         line: "var(--line)",
         accent: "var(--accent)",
+        "accent-2": "var(--accent-2)",
         "accent-soft": "var(--accent-soft)",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "var(--font-inter)", "sans-serif"],
       },
     },
   },

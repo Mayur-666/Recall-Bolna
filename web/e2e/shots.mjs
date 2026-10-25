@@ -1,0 +1,18 @@
+import { chromium } from "@playwright/test";
+const [,, out, password] = process.argv;
+const browser = await chromium.launch({ channel: "msedge" });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+await page.goto("http://localhost:3000/login");
+await page.screenshot({ path: `${out}/login.png` });
+await page.getByLabel("Email").fill("demo@recall.local");
+await page.getByLabel("Password").fill(password);
+await page.getByRole("button", { name: "Sign in" }).click();
+await page.waitForURL(/dashboard/);
+await page.waitForTimeout(2500);
+await page.screenshot({ path: `${out}/dashboard.png` });
+await page.getByRole("button", { name: "Which deployment provider did we pick?" }).click();
+await page.waitForTimeout(1300);
+await page.screenshot({ path: `${out}/dashboard-beams.png` });
+await page.waitForTimeout(1800);
+await page.screenshot({ path: `${out}/dashboard-answer.png`, fullPage: true });
+await browser.close();

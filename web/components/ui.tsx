@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { ConversationStatus, DecisionState } from "@/lib/types";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-xl border border-line bg-surface p-5 shadow-sm ${className}`}>{children}</div>;
+  return <div className={`glass rounded-2xl p-5 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.6)] ${className}`}>{children}</div>;
 }
 
 export function Spinner({ label = "Loading…" }: { label?: string }) {
@@ -17,7 +17,7 @@ export function Spinner({ label = "Loading…" }: { label?: string }) {
 
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-line bg-surface/60 px-6 py-10 text-center">
+    <div className="rounded-2xl border border-dashed border-line px-6 py-10 text-center">
       <p className="font-medium">{title}</p>
       {children && <div className="mt-2 text-sm text-muted">{children}</div>}
     </div>
@@ -26,10 +26,10 @@ export function EmptyState({ title, children }: { title: string; children?: Reac
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div role="alert" className="flex items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+    <div role="alert" className="flex items-center justify-between gap-4 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
       <span>{message}</span>
       {onRetry && (
-        <button onClick={onRetry} className="rounded-md border border-red-300 bg-white px-3 py-1 font-medium hover:bg-red-100">
+        <button onClick={onRetry} className="rounded-md border border-rose-300/40 px-3 py-1 font-medium hover:bg-rose-400/10">
           Retry
         </button>
       )}
@@ -38,43 +38,59 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 }
 
 const STATUS_STYLES: Record<ConversationStatus, string> = {
-  queued: "bg-slate-100 text-slate-700",
-  processing: "bg-blue-50 text-blue-700",
-  ready: "bg-emerald-50 text-emerald-700",
-  failed: "bg-red-50 text-red-700",
+  queued: "bg-slate-400/10 text-slate-300 ring-slate-400/30",
+  processing: "bg-sky-400/10 text-sky-300 ring-sky-400/30",
+  ready: "bg-emerald-400/10 text-emerald-300 ring-emerald-400/30",
+  failed: "bg-rose-400/10 text-rose-300 ring-rose-400/30",
 };
 
 export function StatusBadge({ status }: { status: ConversationStatus }) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[status]}`}>
-      {status === "processing" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />}
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${STATUS_STYLES[status]}`}>
+      {status === "processing" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-300" />}
       {status}
     </span>
   );
 }
 
-const STATE_STYLES: Record<DecisionState, { label: string; cls: string }> = {
-  decided: { label: "Decided", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  proposed: { label: "Suggested", cls: "bg-amber-50 text-amber-800 border-amber-200" },
-  unresolved: { label: "Left open", cls: "bg-slate-50 text-slate-700 border-slate-200" },
-  rejected: { label: "Turned down", cls: "bg-zinc-100 text-zinc-600 border-zinc-200" },
-  superseded: { label: "Changed later", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+// One colour language shared by chips, the Memory Field and the live evidence stream.
+export const STATE_COLORS: Record<DecisionState, string> = {
+  decided: "#3ee6a0",
+  proposed: "#ffc857",
+  unresolved: "#8fa8ff",
+  rejected: "#8a8fa8",
+  superseded: "#ff6b9a",
+};
+
+const STATE_LABELS: Record<DecisionState, string> = {
+  decided: "Decided",
+  proposed: "Suggested",
+  unresolved: "Left open",
+  rejected: "Turned down",
+  superseded: "Changed later",
 };
 
 export function DecisionStateChip({ state }: { state: DecisionState | null }) {
   if (!state) return null;
-  const s = STATE_STYLES[state];
-  return <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${s.cls}`}>{s.label}</span>;
+  const c = STATE_COLORS[state];
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{ color: c, background: `${c}1f`, boxShadow: `inset 0 0 0 1px ${c}55` }}
+    >
+      {STATE_LABELS[state]}
+    </span>
+  );
 }
 
 export function Chip({ children, tone = "slate" }: { children: ReactNode; tone?: "slate" | "accent" | "rose" }) {
   const cls =
     tone === "accent"
-      ? "bg-accent-soft text-accent"
+      ? "bg-accent-soft text-[#c7bfff] ring-accent/40"
       : tone === "rose"
-        ? "bg-rose-50 text-rose-700"
-        : "bg-slate-100 text-slate-700";
-  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{children}</span>;
+        ? "bg-rose-400/10 text-rose-300 ring-rose-400/30"
+        : "bg-white/5 text-muted ring-white/10";
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${cls}`}>{children}</span>;
 }
 
 export function formatDate(iso: string): string {

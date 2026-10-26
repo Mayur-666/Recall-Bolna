@@ -3,6 +3,8 @@
 @tailwind utilities;
 
 :root {
+  --font-inter: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --paper: #070a16;
   --surface: rgba(20, 26, 48, 0.72);
   --surface-solid: #111733;
@@ -95,4 +97,42 @@ mark.evidence.active {
 
 ::selection {
   background: rgba(139, 123, 255, 0.45);
+}
+
+/* Custom cosmic slim scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(143, 151, 194, 0.28) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(143, 151, 194, 0.25);
+  border-radius: 9999px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 123, 255, 0.55);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(139, 123, 255, 0.28);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(62, 230, 196, 0.55);
 }

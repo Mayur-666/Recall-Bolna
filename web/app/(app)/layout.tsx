@@ -1,10 +1,7 @@
-import { Nav } from "@/components/nav";
-
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <>
-      <Nav />
-      <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
-    </>
+    <div className="h-screen w-screen overflow-hidden relative">
+      {children}
+    </div>
   );
 }

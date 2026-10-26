@@ -18,7 +18,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await apiFetch("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
-      router.push("/dashboard");
+      router.push("/space");
     } catch (err) {
       setError(err instanceof ApiError && err.status === 401 ? "Invalid email or password." : "Could not sign in. Is the backend running?");
     } finally {

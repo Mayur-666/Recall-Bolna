@@ -70,6 +70,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./backend
+          target: /app
 
   web:
     build:
@@ -80,6 +85,13 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+    develop:
+      watch:
+        - action: rebuild
+          path: ./web
+          ignore:
+            - node_modules/
+            - .next/
 
   tunnel:
     image: cloudflare/cloudflared:latest

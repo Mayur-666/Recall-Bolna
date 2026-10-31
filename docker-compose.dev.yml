@@ -1,0 +1,41 @@
+# Live reload for code changes:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --watch
+#
+# web:     runs `next dev`; edits under ./web are synced into the container and hot-reload.
+#          Changing package.json / package-lock.json rebuilds the image.
+# backend: ./backend is already bind-mounted, so uvicorn --reload picks up edits (polling, because
+#          file events don't cross a Windows/macOS bind mount). requirements*.txt rebuilds the image.
+services:
+  backend:
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app"]
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    develop:
+      # Compose skips sync for bind-mounted paths, so only dependency changes are watched here.
+      watch: !override
+        - action: rebuild
+          path: ./backend/requirements.txt
+        - action: rebuild
+          path: ./backend/requirements-dev.txt
+
+  web:
+    build:
+      target: dev
+    environment:
+      BACKEND_URL: http://backend:8000
+      WATCHPACK_POLLING: "true"
+    develop:
+      watch: !override
+        - action: sync
+          path: ./web
+          target: /app
+          ignore:
+            - node_modules/
+            - .next/
+            - test-results/
+            - playwright-report/
+        - action: rebuild
+          path: ./web/package.json
+        - action: rebuild
+          path: ./web/package-lock.json

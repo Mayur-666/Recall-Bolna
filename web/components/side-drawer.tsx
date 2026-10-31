@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AddConversationForm } from "@/components/add-conversation-form";
+import { LogoMark } from "@/components/logo";
 import { TranscriptView } from "@/components/transcript-view";
 import {
   DecisionStateChip,
@@ -35,6 +36,8 @@ interface SideDrawerProps {
   highlightMemoryId?: string | null;
   onMemoryGraphChanged?: () => void;
   onLogout?: () => void;
+  /** Bumped whenever a conversation starts/finishes processing (live memory events). */
+  refreshKey?: number;
 }
 
 export function SideDrawer({
@@ -47,6 +50,7 @@ export function SideDrawer({
   highlightMemoryId,
   onMemoryGraphChanged,
   onLogout,
+  refreshKey = 0,
 }: SideDrawerProps) {
   // Listen for Escape key
   useEffect(() => {
@@ -63,7 +67,7 @@ export function SideDrawer({
     <>
       {/* Backdrop overlay */}
       <div
-        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
+        className={`fixed inset-0 z-40 bg-black/60 transition-opacity duration-300 ${
           isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
         onClick={onClose}
@@ -75,25 +79,23 @@ export function SideDrawer({
         role="dialog"
         aria-label="Mission Control Panel"
         aria-modal="true"
-        className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-xl md:max-w-2xl flex-col border-l border-line bg-paper/95 backdrop-blur-xl shadow-2xl transition-transform duration-300 ease-out ${
+        className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-xl md:max-w-2xl flex-col border-l border-line bg-surface-solid shadow-2xl transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
         {/* Drawer Header */}
         <div className="flex items-center justify-between border-b border-line px-6 py-4">
           <div className="flex items-center gap-3">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-[#7c5cff] to-[#3ee6c4] text-xs font-bold text-[#061018]">
-              R
-            </span>
-            <span className="font-display font-semibold tracking-tight text-white">
-              Mission Control
+            <LogoMark size={22} />
+            <span className="font-display font-semibold tracking-tight text-ink">
+              Library
             </span>
           </div>
 
           <button
             onClick={onClose}
             aria-label="Close panel"
-            className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-accent hover:text-white transition"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-accent hover:text-ink transition"
           >
             ✕
           </button>
@@ -112,7 +114,7 @@ export function SideDrawer({
                 : "border-transparent text-muted hover:text-ink"
             }`}
           >
-            <span>💬 Conversations</span>
+            <span>Conversations</span>
           </button>
 
           <button
@@ -126,7 +128,7 @@ export function SideDrawer({
                 : "border-transparent text-muted hover:text-ink"
             }`}
           >
-            <span>➕ Add Transcript</span>
+            <span>Add transcript</span>
           </button>
 
           <button
@@ -140,7 +142,7 @@ export function SideDrawer({
                 : "border-transparent text-muted hover:text-ink"
             }`}
           >
-            <span>📞 Voice Calls</span>
+            <span>Calls</span>
           </button>
 
           <button
@@ -154,15 +156,16 @@ export function SideDrawer({
                 : "border-transparent text-muted hover:text-ink"
             }`}
           >
-            <span>📊 Overview</span>
+            <span>Overview</span>
           </button>
         </div>
 
         {/* Drawer Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar">
+        <div key={selectedConversationId ?? activeTab} className="rise-in flex-1 overflow-y-auto px-6 py-6 custom-scrollbar">
           {selectedConversationId ? (
             <ConversationDetailDrawer
               id={selectedConversationId}
+              refreshKey={refreshKey}
               highlightMemoryId={highlightMemoryId}
               onBack={() => onSelectConversation(null)}
               onDeleted={() => {
@@ -172,15 +175,16 @@ export function SideDrawer({
             />
           ) : activeTab === "conversations" ? (
             <ConversationsListDrawer
+              refreshKey={refreshKey}
               onSelect={(id) => onSelectConversation(id)}
               onAddNew={() => onTabChange("add")}
             />
           ) : activeTab === "add" ? (
             <div className="space-y-4">
-              <h2 className="font-display text-lg font-semibold text-white">Add a Conversation</h2>
+              <h2 className="font-display text-lg font-semibold text-ink">Add a Conversation</h2>
               <p className="text-xs text-muted">
-                Paste meeting transcripts or upload .txt / .vtt. Recall automatically extracts key
-                decisions, promises, and facts into the constellation.
+                Paste meeting transcripts or upload .txt / .vtt. Recall automatically extracts decisions,
+                commitments and dates, each tied to the line it came from.
               </p>
               <AddConversationForm
                 onCreated={(c) => {
@@ -211,14 +215,19 @@ export function SideDrawer({
 function ConversationsListDrawer({
   onSelect,
   onAddNew,
+  refreshKey,
 }: {
   onSelect: (id: string) => void;
   onAddNew: () => void;
+  refreshKey: number;
 }) {
   const [filter, setFilter] = useState("");
   const [query, setQuery] = useState("");
   const listPath = `/api/v1/conversations${filter ? `?status=${filter}` : ""}`;
   const { data, loading, error, reload } = useApi<Conversation[]>(listPath);
+  useEffect(() => {
+    if (refreshKey) void reload();
+  }, [refreshKey, reload]);
 
   const busy = data?.some((c) => c.status === "queued" || c.status === "processing");
   useEffect(() => {
@@ -239,10 +248,10 @@ function ConversationsListDrawer({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-lg font-semibold text-white">Conversations</h2>
+        <h2 className="font-display text-lg font-semibold text-ink">Conversations</h2>
         <button
           onClick={onAddNew}
-          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-on-accent hover:brightness-105"
         >
           Add conversation
         </button>
@@ -276,14 +285,14 @@ function ConversationsListDrawer({
         </EmptyState>
       )}
 
-      <ul className="space-y-2">
+      <ul className="stagger space-y-2">
         {filtered.map((c) => (
           <li
             key={c.id}
             role="row"
             aria-label={c.title}
             onClick={() => onSelect(c.id)}
-            className="group cursor-pointer rounded-xl border border-line bg-surface/80 p-3.5 transition hover:border-accent/60 hover:bg-surface"
+            className="lift group cursor-pointer rounded-xl border border-line bg-surface/80 p-3.5 hover:border-accent/60 hover:bg-surface"
           >
             <div className="flex items-start justify-between gap-3">
               <a
@@ -292,7 +301,7 @@ function ConversationsListDrawer({
                   e.preventDefault();
                   onSelect(c.id);
                 }}
-                className="text-sm font-medium text-white group-hover:text-accent transition"
+                className="text-sm font-medium text-ink group-hover:text-accent transition"
               >
                 {c.title}
               </a>
@@ -313,6 +322,12 @@ function ConversationsListDrawer({
                   <span className="rounded bg-accent/20 px-1 text-[10px] text-accent">Sample</span>
                 </>
               )}
+              {c.source_type === "voice" && (
+                <>
+                  <span>·</span>
+                  <span className="rounded bg-[#86c79a]/15 px-1 text-[10px] text-[#a6d8b4]">Voice note</span>
+                </>
+              )}
             </div>
           </li>
         ))}
@@ -323,16 +338,21 @@ function ConversationsListDrawer({
 
 function ConversationDetailDrawer({
   id,
+  refreshKey,
   highlightMemoryId,
   onBack,
   onDeleted,
 }: {
   id: string;
+  refreshKey: number;
   highlightMemoryId?: string | null;
   onBack: () => void;
   onDeleted: () => void;
 }) {
   const { data, loading, error, reload } = useApi<ConversationDetail>(`/api/v1/conversations/${id}`);
+  useEffect(() => {
+    if (refreshKey) void reload();
+  }, [refreshKey, reload]);
   const [activeMemory, setActiveMemory] = useState<string | null>(highlightMemoryId ?? null);
   const [detailTab, setDetailTab] = useState<"transcript" | "memories">("transcript");
 
@@ -363,7 +383,7 @@ function ConversationDetailDrawer({
   if (!data) return null;
 
   async function handleDelete() {
-    if (!window.confirm("Delete this conversation and its extracted memories from the constellation?")) return;
+    if (!window.confirm("Delete this conversation and its extracted memories?")) return;
     await apiFetch(`/api/v1/conversations/${id}`, { method: "DELETE" });
     onDeleted();
   }
@@ -379,14 +399,14 @@ function ConversationDetailDrawer({
     <div className="space-y-5">
       <button
         onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-white transition"
+        className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-ink transition"
       >
         ← Back to list
       </button>
 
       <div>
         <div className="flex items-start justify-between gap-3">
-          <h2 className="font-display text-xl font-bold text-white">{data.title}</h2>
+          <h2 className="font-display text-xl font-bold text-ink">{data.title}</h2>
           <StatusBadge status={data.status} />
         </div>
         <p className="mt-1 text-xs text-muted">
@@ -398,7 +418,7 @@ function ConversationDetailDrawer({
       <div className="flex items-center gap-3 border-b border-line pb-4 text-xs">
         <button
           onClick={handleDelete}
-          className="text-rose-400 hover:text-rose-300 transition"
+          className="text-[#e07a6e] hover:text-[#f0b2a9] transition"
         >
           Delete conversation
         </button>
@@ -411,12 +431,12 @@ function ConversationDetailDrawer({
           className={`pb-2.5 border-b-2 transition flex items-center gap-1.5 ${
             detailTab === "transcript"
               ? "border-accent text-accent font-semibold"
-              : "border-transparent text-muted hover:text-white"
+              : "border-transparent text-muted hover:text-ink"
           }`}
         >
-          <span>📜 Full Transcript</span>
+          <span>Transcript</span>
           {activeMemory && (
-            <span className="h-1.5 w-1.5 rounded-full bg-accent-2 animate-ping" />
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           )}
         </button>
         <button
@@ -424,10 +444,10 @@ function ConversationDetailDrawer({
           className={`pb-2.5 border-b-2 transition ${
             detailTab === "memories"
               ? "border-accent text-accent font-semibold"
-              : "border-transparent text-muted hover:text-white"
+              : "border-transparent text-muted hover:text-ink"
           }`}
         >
-          💡 Extracted Memories ({items.length})
+          Extracted ({items.length})
         </button>
       </div>
 
@@ -449,7 +469,7 @@ function ConversationDetailDrawer({
           {decisions.length > 0 && (
             <div data-testid="decisions" className="space-y-1.5">
               <span className="text-xs font-medium uppercase tracking-wider text-muted">Decisions</span>
-              <ul className="space-y-1.5">
+              <ul className="stagger space-y-1.5">
                 {decisions.map((d) => (
                   <li
                     key={d.id}
@@ -492,7 +512,7 @@ function ConversationDetailDrawer({
           {actions.length > 0 && (
             <div className="space-y-1.5">
               <span className="text-xs font-medium uppercase tracking-wider text-muted">Action Items & Commitments</span>
-              <ul className="space-y-1.5">
+              <ul className="stagger space-y-1.5">
                 {actions.map((a) => (
                   <li
                     key={a.id}
@@ -530,7 +550,7 @@ function ConversationDetailDrawer({
           {facts.length > 0 && (
             <div className="space-y-1.5">
               <span className="text-xs font-medium uppercase tracking-wider text-muted">Key Facts</span>
-              <ul className="space-y-1.5">
+              <ul className="stagger space-y-1.5">
                 {facts.map((f) => (
                   <li
                     key={f.id}
@@ -595,7 +615,7 @@ function CallsDrawer() {
     <div className="space-y-6">
       {/* Phone Call Fallback Form */}
       <details className="rounded-xl border border-line bg-surface p-4 text-sm" open>
-        <summary className="cursor-pointer font-semibold text-white hover:text-accent transition">
+        <summary className="cursor-pointer font-semibold text-ink hover:text-accent transition">
           Call my phone instead
         </summary>
         <p className="mt-1 text-xs text-muted">
@@ -611,19 +631,19 @@ function CallsDrawer() {
             className="rounded-lg border border-line bg-paper px-3 py-2 text-xs outline-none focus:border-accent"
           />
           {phoneError && (
-            <p role="alert" className="text-xs text-rose-300">
+            <p role="alert" className="text-xs text-[#f0b2a9]">
               {phoneError}
             </p>
           )}
           {phoneSuccess && (
-            <p className="text-xs text-emerald-300">
+            <p className="text-xs text-[#a6d8b4]">
               {phoneSuccess}
             </p>
           )}
           <button
             type="submit"
             disabled={calling}
-            className="rounded-lg bg-accent/80 hover:bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50 transition"
+            className="rounded-lg bg-accent hover:brightness-105 px-4 py-2 text-xs font-semibold text-on-accent disabled:opacity-50 transition"
           >
             {calling ? "Dialing..." : "Call me"}
           </button>
@@ -632,15 +652,15 @@ function CallsDrawer() {
 
       {/* Past Voice Calls */}
       <div className="space-y-3">
-        <h2 className="font-display text-sm font-semibold text-white">Past calls</h2>
+        <h2 className="font-display text-sm font-semibold text-ink">Past calls</h2>
         {calls.loading && !calls.data && <Spinner label="Loading call logs..." />}
         {calls.data && calls.data.length === 0 && (
           <EmptyState title="No calls yet">
-            Tap the orb in the center of the space canvas to have your first voice conversation.
+            Tap the orb to ask your first question out loud.
           </EmptyState>
         )}
 
-        <ul className="space-y-2">
+        <ul className="stagger space-y-2">
           {calls.data?.map((c) => (
             <li
               key={c.id}
@@ -648,8 +668,8 @@ function CallsDrawer() {
               className="cursor-pointer rounded-xl border border-line bg-surface/80 p-3 text-xs transition hover:border-accent"
             >
               <div className="flex items-center justify-between">
-                <span className="font-medium text-white">
-                  {c.channel === "phone" ? "📞 Phone call" : "🌐 Web call"}
+                <span className="font-medium text-ink">
+                  {c.channel === "phone" ? "Phone call" : "Web call"}
                 </span>
                 <span className="text-muted">{formatDate(c.created_at)}</span>
               </div>
@@ -658,7 +678,7 @@ function CallsDrawer() {
               </div>
 
               {selectedCall?.id === c.id && c.transcript && (
-                <div className="mt-3 rounded-lg border border-line bg-black/40 p-3 text-ink whitespace-pre-wrap font-sans text-xs">
+                <div className="mt-3 rounded-lg border border-line bg-paper p-3 text-ink whitespace-pre-wrap font-sans text-xs">
                   <div className="text-[11px] font-semibold text-accent mb-1 uppercase tracking-wider">
                     Bolna Call Transcript
                   </div>
@@ -687,17 +707,17 @@ function OverviewDrawer({
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="font-display text-lg font-semibold text-white">Memory Overview</h2>
-        <p className="text-xs text-muted">High-level status of your remembered universe.</p>
+        <h2 className="font-display text-lg font-semibold text-ink">Memory Overview</h2>
+        <p className="text-xs text-muted">What Recall knows so far.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-xl border border-line bg-surface p-3.5">
-          <div data-testid="stat-conversations" className="text-2xl font-bold text-white">{data.conversation_count}</div>
+          <div data-testid="stat-conversations" className="text-2xl font-bold text-ink">{data.conversation_count}</div>
           <div className="text-xs text-muted">Conversations</div>
         </div>
         <div className="rounded-xl border border-line bg-surface p-3.5">
-          <div className="text-2xl font-bold text-accent-2">{data.memory_count}</div>
+          <div className="text-2xl font-bold text-accent">{data.memory_count}</div>
           <div className="text-xs text-muted">Extracted Memories</div>
         </div>
       </div>
@@ -707,7 +727,7 @@ function OverviewDrawer({
           <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-muted">
             Recent decisions
           </h2>
-          <ul className="space-y-2">
+          <ul className="stagger space-y-2">
             {data.recent_decisions.slice(0, 5).map((d) => (
               <li
                 key={d.id}
@@ -715,7 +735,7 @@ function OverviewDrawer({
                 className="cursor-pointer rounded-lg border border-line bg-surface p-2.5 text-xs transition hover:border-accent"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <span className="font-medium text-white">{d.statement}</span>
+                  <span className="font-medium text-ink">{d.statement}</span>
                   <DecisionStateChip state={d.decision_state} />
                 </div>
                 <div className="mt-1 text-[11px] text-muted">
@@ -732,14 +752,14 @@ function OverviewDrawer({
           <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-muted">
             Open Action Items
           </h3>
-          <ul className="space-y-2">
+          <ul className="stagger space-y-2">
             {data.open_action_items.slice(0, 5).map((a) => (
               <li
                 key={a.id}
                 onClick={() => onSelectConversation(a.conversation_id)}
                 className="cursor-pointer rounded-lg border border-line bg-surface p-2.5 text-xs transition hover:border-accent"
               >
-                <p className="font-medium text-white">{a.statement}</p>
+                <p className="font-medium text-ink">{a.statement}</p>
                 <div className="mt-1 text-[11px] text-muted">
                   Owner: {a.owner_is_user ? "You" : a.owner ?? "unassigned"}
                   {a.due_date ? ` · Due ${formatDate(a.due_date)}` : ""}
@@ -761,7 +781,7 @@ function DrawerFooter({ onLogout }: { onLogout?: () => void }) {
       <div>
         {user?.email ? (
           <div>
-            <span className="font-medium text-white">{user.display_name || user.email}</span>
+            <span className="font-medium text-ink">{user.display_name || user.email}</span>
             <div className="text-[11px] text-muted">{user.email}</div>
           </div>
         ) : (
@@ -771,7 +791,7 @@ function DrawerFooter({ onLogout }: { onLogout?: () => void }) {
 
       <button
         onClick={onLogout}
-        className="rounded-lg border border-line px-3 py-1.5 text-muted hover:border-rose-400/50 hover:text-rose-300 transition"
+        className="rounded-lg border border-line px-3 py-1.5 text-muted hover:border-[#e07a6e]/50 hover:text-[#f0b2a9] transition"
       >
         Sign Out
       </button>

@@ -6,17 +6,17 @@ import { VoiceOrb, type OrbState } from "@/components/voice-orb";
 import type { MemoryGraph, MemoryNode } from "@/lib/types";
 
 const KIND_COLORS: Record<string, string> = {
-  commitment: "#b69cff",
-  action_item: "#b69cff",
-  fact: "#5cd6ff",
-  date: "#5cd6ff",
-  person: "#ff8fd1",
-  decision: "#3ee6c4",
+  commitment: "#9cb8d9",
+  action_item: "#9cb8d9",
+  fact: "#cfcbc2",
+  date: "#cfcbc2",
+  person: "#d7a2b5",
+  decision: "#86c79a",
 };
 
 export function getNodeColor(n: Pick<MemoryNode, "kind" | "decision_state">): string {
-  if (n.kind === "decision" && n.decision_state) return STATE_COLORS[n.decision_state] || "#3ee6c4";
-  return KIND_COLORS[n.kind] ?? "#8f97c2";
+  if (n.kind === "decision" && n.decision_state) return STATE_COLORS[n.decision_state] || "#86c79a";
+  return KIND_COLORS[n.kind] ?? "#8f8c84";
 }
 
 function hash(s: string): number {
@@ -50,6 +50,10 @@ interface SpaceCanvasProps {
   orbLabel: string;
   onSelectNode?: (node: MemoryNode) => void;
   onInspectTranscript?: (conversationId: string, memoryId?: string) => void;
+  /** false when embedded in a scrolling page: no wheel/touch capture, no zoom controls. */
+  interactive?: boolean;
+  /** Initial zoom (the embedded demo starts a little further out). */
+  initialZoom?: number;
 }
 
 export function SpaceCanvas({
@@ -62,6 +66,8 @@ export function SpaceCanvas({
   orbLabel,
   onSelectNode,
   onInspectTranscript,
+  interactive = true,
+  initialZoom = 1,
 }: SpaceCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -69,9 +75,9 @@ export function SpaceCanvas({
   const [size, setSize] = useState({ w: 1200, h: 800 });
 
   // Continuous ref-based transform for 120fps flicker-free animation
-  const zoomRef = useRef(1);
+  const zoomRef = useRef(initialZoom);
   const panRef = useRef({ x: 0, y: 0 });
-  const targetZoomRef = useRef(1);
+  const targetZoomRef = useRef(initialZoom);
   const targetPanRef = useRef({ x: 0, y: 0 });
 
   // Dragging and touch refs
@@ -83,7 +89,22 @@ export function SpaceCanvas({
 
   // Hover and selection state for tooltips
   const [hoveredNode, setHoveredNode] = useState<{ node: MemoryNode; screenX: number; screenY: number } | null>(null);
-  const [selectedNode, setSelectedNode] = useState<MemoryNode | null>(null);
+  // A clicked node pins its popup at the click position until closed or another spot is clicked.
+  const [selected, setSelected] = useState<{ node: MemoryNode; screenX: number; screenY: number } | null>(null);
+  const selectedNode = selected?.node ?? null;
+  // Moving from a node to its popup crosses empty canvas; hide the hover popup only after a short grace.
+  const hoverHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelHoverHide = () => {
+    if (hoverHideRef.current) clearTimeout(hoverHideRef.current);
+    hoverHideRef.current = null;
+  };
+  const scheduleHoverHide = () => {
+    if (hoverHideRef.current) return;
+    hoverHideRef.current = setTimeout(() => {
+      hoverHideRef.current = null;
+      setHoveredNode(null);
+    }, 300);
+  };
 
   const beamsRef = useRef<Beam[]>([]);
 
@@ -159,23 +180,27 @@ export function SpaceCanvas({
   }, [graph]);
 
   // Set of matched node IDs based on highlightRefs (can match node id or chunk_ref)
+  // Keyed by content, not array identity: the parent re-renders ~10x/s with the live audio level and
+  // passes a fresh array each time, which used to restart the beams every frame (visible flicker).
+  const refsKey = [...highlightRefs].sort().join("|");
   const matched = useMemo(() => {
-    const refs = new Set(highlightRefs);
+    const refs = new Set(refsKey ? refsKey.split("|") : []);
     return new Set(
       layout.placed
         .filter((p) => refs.has(p.node.id) || (p.node.chunk_ref && refs.has(p.node.chunk_ref)))
         .map((p) => p.node.id)
     );
-  }, [highlightRefs, layout.placed]);
+  }, [refsKey, layout.placed]);
+  const matchedKey = [...matched].sort().join("|");
 
-  // Launch light beams when pulseKey or matched changes
+  // Launch light beams when a new search/memory lights nodes (pulseKey) or the lit set really changes.
   useEffect(() => {
     const now = performance.now();
-    beamsRef.current = [...matched].map((target, i) => ({
+    beamsRef.current = (matchedKey ? matchedKey.split("|") : []).map((target, i) => ({
       target,
       start: now + i * 110,
     }));
-  }, [pulseKey, matched]);
+  }, [pulseKey, matchedKey]);
 
   // SEPARATE EFFECT: Resize canvas only when container size changes (NEVER on zoom!)
   useEffect(() => {
@@ -191,7 +216,7 @@ export function SpaceCanvas({
   // Native non-passive Wheel & Trackpad Pinch listener
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el || !interactive) return;
 
     const onNativeWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -221,7 +246,7 @@ export function SpaceCanvas({
 
     el.addEventListener("wheel", onNativeWheel, { passive: false });
     return () => el.removeEventListener("wheel", onNativeWheel);
-  }, [size]);
+  }, [size, interactive]);
 
   // Continuous Canvas Drawing Loop (runs smoothly without re-initializing on zoom/pan)
   useEffect(() => {
@@ -269,9 +294,9 @@ export function SpaceCanvas({
 
       // 1. Draw Starfield
       for (const s of layout.stars) {
-        const alpha = s.a * (0.65 + 0.35 * Math.sin(t * s.flickerSpeed + s.x));
+        const alpha = 0.55 * s.a * (0.65 + 0.35 * Math.sin(t * s.flickerSpeed + s.x));
         ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-        ctx.fillStyle = "#dce2ff";
+        ctx.fillStyle = "#e8e4da";
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
         ctx.fill();
@@ -281,7 +306,7 @@ export function SpaceCanvas({
       // 2. Draw Gravitational Orbital Rings
       const rings = [180, 320, 480, 640];
       for (const r of rings) {
-        ctx.strokeStyle = "rgba(139, 123, 255, 0.07)";
+        ctx.strokeStyle = "rgba(237, 235, 230, 0.045)";
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -291,17 +316,17 @@ export function SpaceCanvas({
       // 3. Draw Cluster Atmosphere & Labels
       for (const c of layout.centres) {
         const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.r * 2.2);
-        g.addColorStop(0, "rgba(124, 92, 255, 0.12)");
-        g.addColorStop(0.6, "rgba(62, 230, 196, 0.04)");
-        g.addColorStop(1, "rgba(124, 92, 255, 0)");
+        g.addColorStop(0, "rgba(242, 201, 76, 0.07)");
+        g.addColorStop(0.6, "rgba(237, 235, 230, 0.02)");
+        g.addColorStop(1, "rgba(242, 201, 76, 0)");
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.arc(c.x, c.y, c.r * 2.2, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.font = "600 11px var(--font-display), sans-serif";
+        ctx.font = "500 10.5px \"Geist Mono\", ui-monospace, monospace";
         ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(180, 195, 255, 0.7)";
+        ctx.fillStyle = "rgba(201, 198, 191, 0.55)";
         ctx.fillText(c.label.toUpperCase(), c.x, c.y - c.r * 1.3 - 6);
       }
 
@@ -319,16 +344,16 @@ export function SpaceCanvas({
 
         if (e.type === "similar") {
           ctx.setLineDash([]);
-          ctx.strokeStyle = "rgba(143, 151, 194, 0.15)";
+          ctx.strokeStyle = "rgba(237, 235, 230, 0.09)";
           ctx.lineWidth = 1;
         } else if (e.type === "supersedes") {
           ctx.setLineDash([5, 5]);
           ctx.lineDashOffset = -t * 0.02;
-          ctx.strokeStyle = "rgba(255, 107, 154, 0.7)";
+          ctx.strokeStyle = "rgba(224, 122, 110, 0.8)";
           ctx.lineWidth = 1.6;
         } else {
           ctx.setLineDash([3, 4]);
-          ctx.strokeStyle = `rgba(255, 90, 90, ${0.4 + 0.3 * Math.sin(t * 0.004)})`;
+          ctx.strokeStyle = `rgba(224, 122, 110, ${0.4 + 0.3 * Math.sin(t * 0.004)})`;
           ctx.lineWidth = 1.6;
         }
         ctx.stroke();
@@ -350,9 +375,9 @@ export function SpaceCanvas({
           const hy = 2 * (1 - e) * e * my + e * e * y;
 
           const grad = ctx.createLinearGradient(0, 0, hx, hy);
-          grad.addColorStop(0, "rgba(139, 123, 255, 0.1)");
-          grad.addColorStop(0.7, "rgba(62, 230, 196, 0.85)");
-          grad.addColorStop(1, "rgba(255, 255, 255, 1)");
+          grad.addColorStop(0, "rgba(242, 201, 76, 0.04)");
+          grad.addColorStop(0.7, "rgba(242, 201, 76, 0.85)");
+          grad.addColorStop(1, "rgba(255, 246, 214, 1)");
 
           ctx.strokeStyle = grad;
           ctx.lineWidth = 2.4;
@@ -362,7 +387,7 @@ export function SpaceCanvas({
           ctx.stroke();
 
           // Spark head
-          ctx.fillStyle = "#ffffff";
+          ctx.fillStyle = "#fff6d6";
           ctx.beginPath();
           ctx.arc(hx, hy, 3.5, 0, Math.PI * 2);
           ctx.fill();
@@ -370,7 +395,7 @@ export function SpaceCanvas({
           // Expanding ignition ripple ring around target
           const pulseProgress = (k - 1) / 1.0;
           const pulseR = 8 + pulseProgress * 36;
-          ctx.strokeStyle = `rgba(62, 230, 196, ${1 - pulseProgress})`;
+          ctx.strokeStyle = `rgba(242, 201, 76, ${1 - pulseProgress})`;
           ctx.lineWidth = 1.8 * (1 - pulseProgress);
           ctx.beginPath();
           ctx.arc(x, y, pulseR, 0, Math.PI * 2);
@@ -400,7 +425,7 @@ export function SpaceCanvas({
 
         // Star core
         ctx.globalAlpha = dim ? 0.35 : 1;
-        ctx.fillStyle = on || isHovered ? "#ffffff" : p.color;
+        ctx.fillStyle = on || isHovered ? "#fff6d6" : p.color;
         ctx.beginPath();
         ctx.arc(x, y, baseR, 0, Math.PI * 2);
         ctx.fill();
@@ -414,9 +439,22 @@ export function SpaceCanvas({
           ctx.stroke();
         }
 
+        // A just-saved voice note that's still being processed: a slow dashed pulse.
+        if (p.node.pending) {
+          const k = 0.5 + 0.5 * Math.sin(t * 0.005);
+          ctx.setLineDash([3, 3]);
+          ctx.lineDashOffset = -t * 0.02;
+          ctx.strokeStyle = `rgba(242, 201, 76, ${0.45 + 0.45 * k})`;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.arc(x, y, baseR + 5 + 3 * k, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
         // Ring for user's own promises
         if (p.node.owner_is_user) {
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+          ctx.strokeStyle = "rgba(242, 201, 76, 0.9)";
           ctx.lineWidth = 1.2;
           ctx.beginPath();
           ctx.arc(x, y, baseR + 4, 0, Math.PI * 2);
@@ -478,9 +516,11 @@ export function SpaceCanvas({
     });
 
     if (hit) {
-      setHoveredNode({ node: hit.node, screenX: sx, screenY: sy });
+      cancelHoverHide();
+      // Only on a new node: re-setting state on every pixel of movement re-rendered constantly.
+      setHoveredNode((prev) => (prev?.node.id === hit.node.id ? prev : { node: hit.node, screenX: sx, screenY: sy }));
     } else {
-      setHoveredNode(null);
+      scheduleHoverHide();
     }
   };
 
@@ -491,10 +531,10 @@ export function SpaceCanvas({
     isDraggingRef.current = false;
 
     if (!wasDrag && hoveredNode) {
-      setSelectedNode(hoveredNode.node);
+      setSelected(hoveredNode);
       onSelectNode?.(hoveredNode.node);
     } else if (!wasDrag && !hoveredNode) {
-      setSelectedNode(null);
+      setSelected(null);
     }
   };
 
@@ -543,11 +583,11 @@ export function SpaceCanvas({
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      style={{ touchAction: "none" }}
-      className="relative h-full w-full overflow-hidden select-none cursor-grab active:cursor-grabbing bg-[#050814]"
+      onTouchStart={interactive ? handleTouchStart : undefined}
+      onTouchMove={interactive ? handleTouchMove : undefined}
+      onTouchEnd={interactive ? handleTouchEnd : undefined}
+      style={{ touchAction: interactive ? "none" : "pan-y" }}
+      className="relative h-full w-full overflow-hidden select-none cursor-grab active:cursor-grabbing bg-paper"
     >
       {/* 2D Space Canvas */}
       <canvas
@@ -576,6 +616,7 @@ export function SpaceCanvas({
       </div>
 
       {/* Floating Canvas Navigation Controls (Zoom / Reset) */}
+      {interactive && (
       <div className="absolute bottom-6 right-6 z-30 flex items-center gap-1.5 rounded-full border border-line bg-surface/80 p-1.5 backdrop-blur-md shadow-lg">
         <button
           onClick={() => {
@@ -609,15 +650,22 @@ export function SpaceCanvas({
           ⊙
         </button>
       </div>
+      )}
 
       {/* Hovered / Selected Node Celestial HUD Popover */}
-      {(hoveredNode || selectedNode) && (
+      {(selected || hoveredNode) && (
         <NodeTooltipCard
-          node={(hoveredNode?.node ?? selectedNode)!}
-          screenX={hoveredNode?.screenX ?? size.w / 2}
-          screenY={hoveredNode?.screenY ?? size.h / 2}
+          node={(selected ?? hoveredNode)!.node}
+          screenX={(selected ?? hoveredNode)!.screenX}
+          screenY={(selected ?? hoveredNode)!.screenY}
+          pinned={selected !== null}
+          onPointerEnter={cancelHoverHide}
+          onPointerLeave={() => {
+            if (!selected) scheduleHoverHide();
+          }}
+          containerWidth={size.w}
           onInspectTranscript={onInspectTranscript}
-          onClose={() => setSelectedNode(null)}
+          onClose={() => setSelected(null)}
         />
       )}
     </div>
@@ -628,25 +676,40 @@ function NodeTooltipCard({
   node,
   screenX,
   screenY,
+  containerWidth,
   onInspectTranscript,
   onClose,
+  pinned,
+  onPointerEnter,
+  onPointerLeave,
 }: {
   node: MemoryNode;
   screenX: number;
   screenY: number;
+  containerWidth: number;
+  pinned: boolean;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
   onInspectTranscript?: (convId: string, memId?: string) => void;
   onClose?: () => void;
 }) {
   return (
     <div
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      onMouseMove={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+      data-pinned={pinned || undefined}
       className="pointer-events-auto absolute z-30 w-72 -translate-x-1/2 -translate-y-full rounded-xl border border-line bg-surface-solid/95 p-3.5 backdrop-blur-xl shadow-2xl transition animate-in fade-in zoom-in-95"
       style={{
-        left: `${Math.max(160, Math.min(window.innerWidth - 160, screenX))}px`,
+        left: `${Math.max(150, Math.min(containerWidth - 150, screenX))}px`,
         top: `${Math.max(120, screenY - 14)}px`,
       }}
     >
       <div className="flex items-center justify-between gap-2 border-b border-line pb-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-accent-2">
+        <span className="text-[11px] font-mono uppercase tracking-wider text-accent">
           {node.kind}
         </span>
         <div className="flex items-center gap-1.5">
@@ -669,7 +732,7 @@ function NodeTooltipCard({
         </div>
       </div>
 
-      <p className="mt-2 text-xs font-medium text-white leading-relaxed line-clamp-3">
+      <p className="mt-2 max-h-40 overflow-y-auto text-xs font-medium leading-relaxed text-ink">
         {node.statement}
       </p>
 
@@ -679,9 +742,9 @@ function NodeTooltipCard({
         </p>
       )}
 
-      <div className="mt-2 flex items-center justify-between text-[10px] text-muted">
-        <span>{node.speaker ? `Said by ${node.speaker}` : "System extract"}</span>
-        <span>{node.conversation_title}</span>
+      <div className="mt-2 flex items-center justify-between gap-3 text-[10px] text-muted">
+        <span className="shrink-0">{node.speaker ? `Said by ${node.speaker}` : "From notes"}</span>
+        <span className="truncate text-right" title={node.conversation_title}>{node.conversation_title}</span>
       </div>
 
       {onInspectTranscript && (

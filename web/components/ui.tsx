@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { ConversationStatus, DecisionState } from "@/lib/types";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`glass rounded-2xl p-5 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.6)] ${className}`}>{children}</div>;
+  return <div className={`rounded-2xl border border-line bg-surface-solid p-5 ${className}`}>{children}</div>;
 }
 
 export function Spinner({ label = "Loading…" }: { label?: string }) {
@@ -38,16 +38,16 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 }
 
 const STATUS_STYLES: Record<ConversationStatus, string> = {
-  queued: "bg-slate-400/10 text-slate-300 ring-slate-400/30",
-  processing: "bg-sky-400/10 text-sky-300 ring-sky-400/30",
-  ready: "bg-emerald-400/10 text-emerald-300 ring-emerald-400/30",
-  failed: "bg-rose-400/10 text-rose-300 ring-rose-400/30",
+  queued: "bg-white/5 text-muted ring-white/10",
+  processing: "bg-accent-soft text-accent ring-accent/30",
+  ready: "bg-[#86c79a]/10 text-[#a6d8b4] ring-[#86c79a]/30",
+  failed: "bg-[#e07a6e]/10 text-[#eea59b] ring-[#e07a6e]/30",
 };
 
 export function StatusBadge({ status }: { status: ConversationStatus }) {
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${STATUS_STYLES[status]}`}>
-      {status === "processing" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-300" />}
+      {status === "processing" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />}
       {status}
     </span>
   );
@@ -55,11 +55,11 @@ export function StatusBadge({ status }: { status: ConversationStatus }) {
 
 // One colour language shared by chips, the Memory Field and the live evidence stream.
 export const STATE_COLORS: Record<DecisionState, string> = {
-  decided: "#3ee6a0",
-  proposed: "#ffc857",
-  unresolved: "#8fa8ff",
-  rejected: "#8a8fa8",
-  superseded: "#ff6b9a",
+  decided: "#86c79a",
+  proposed: "#e8975a",
+  unresolved: "#93a7c4",
+  rejected: "#7d7a73",
+  superseded: "#e07a6e",
 };
 
 const STATE_LABELS: Record<DecisionState, string> = {
@@ -86,7 +86,7 @@ export function DecisionStateChip({ state }: { state: DecisionState | null }) {
 export function Chip({ children, tone = "slate" }: { children: ReactNode; tone?: "slate" | "accent" | "rose" }) {
   const cls =
     tone === "accent"
-      ? "bg-accent-soft text-[#c7bfff] ring-accent/40"
+      ? "bg-accent-soft text-accent ring-accent/40"
       : tone === "rose"
         ? "bg-rose-400/10 text-rose-300 ring-rose-400/30"
         : "bg-white/5 text-muted ring-white/10";

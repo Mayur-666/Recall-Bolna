@@ -119,7 +119,7 @@ export function AddConversationForm({ onCreated, onCancel }: { onCreated: (c: Co
         <button type="button" onClick={onCancel} className="rounded-lg px-4 py-2 text-sm text-muted hover:text-ink">
           Cancel
         </button>
-        <button type="submit" disabled={busy} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60">
+        <button type="submit" disabled={busy} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:brightness-105 disabled:opacity-60">
           {busy ? "Saving…" : "Save conversation"}
         </button>
       </div>

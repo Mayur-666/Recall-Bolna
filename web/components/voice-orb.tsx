@@ -6,21 +6,26 @@ export type OrbState =
   | "ringing"
   | "listening"
   | "searching"
+  | "saving"
+  | "saved"
   | "found"
   | "no-memory"
   | "ended"
   | "error";
 
-const PALETTE: Record<OrbState, [string, string]> = {
-  idle: ["#8b7bff", "#3ee6c4"],
-  connecting: ["#8b7bff", "#5cd6ff"],
-  ringing: ["#8b7bff", "#5cd6ff"],
-  listening: ["#3ee6c4", "#8b7bff"],
-  searching: ["#5cd6ff", "#b69cff"],
-  found: ["#3ee6a0", "#b7fff0"],
-  "no-memory": ["#8fa8ff", "#4b5590"],
-  ended: ["#5b6182", "#2d3150"],
-  error: ["#ff6b9a", "#7a2944"],
+// [core colour, rim colour, label colour]
+const PALETTE: Record<OrbState, [string, string, string]> = {
+  idle: ["#f2c94c", "#b48d22", "#17150f"],
+  connecting: ["#d8d2c2", "#6f6b60", "#17150f"],
+  ringing: ["#d8d2c2", "#6f6b60", "#17150f"],
+  listening: ["#86c79a", "#3f6f4d", "#0f1a12"],
+  searching: ["#f2c94c", "#b48d22", "#17150f"],
+  saving: ["#f2c94c", "#b48d22", "#17150f"],
+  saved: ["#a6d8b4", "#4b7f5a", "#0f1a12"],
+  found: ["#a6d8b4", "#4b7f5a", "#0f1a12"],
+  "no-memory": ["#93a7c4", "#45526a", "#10141b"],
+  ended: ["#4a4842", "#2b2a26", "#c9c6bf"],
+  error: ["#e07a6e", "#7a3229", "#1d0d0a"],
 };
 
 const LABEL: Record<OrbState, string> = {
@@ -29,6 +34,8 @@ const LABEL: Record<OrbState, string> = {
   ringing: "Ringing…",
   listening: "Listening",
   searching: "Searching memories…",
+  saving: "Saving to memory…",
+  saved: "Saved",
   found: "Found it",
   "no-memory": "No reliable memory",
   ended: "Call ended",
@@ -36,7 +43,7 @@ const LABEL: Record<OrbState, string> = {
 };
 
 /**
- * The voice orb. Its size and glow follow the agent's real audio level (SDK "volume-level"),
+ * The voice orb. Its size follows the agent's real audio level (SDK "volume-level"),
  * and its colour follows backend-observed state: listening, searching, found, or honestly not found.
  */
 export function VoiceOrb({
@@ -52,10 +59,10 @@ export function VoiceOrb({
   disabled?: boolean;
   label: string;
 }) {
-  const [a, b] = PALETTE[state];
-  const live = state === "listening" || state === "searching" || state === "found" || state === "no-memory";
-  const scale = 1 + (live ? Math.min(level, 1) * 0.28 : 0);
-  const spinning = state === "connecting" || state === "ringing" || state === "searching";
+  const [core, rim, text] = PALETTE[state];
+  const live = state === "listening" || state === "searching" || state === "saving" || state === "saved" || state === "found" || state === "no-memory";
+  const scale = 1 + (live ? Math.min(level, 1) * 0.22 : 0);
+  const spinning = state === "connecting" || state === "ringing" || state === "searching" || state === "saving";
   return (
     <div className="flex flex-col items-center gap-3">
       <button
@@ -63,37 +70,50 @@ export function VoiceOrb({
         onClick={onClick}
         disabled={disabled}
         aria-label={label}
-        className="relative grid h-40 w-40 place-items-center rounded-full outline-none focus-visible:ring-4 focus-visible:ring-accent/50 disabled:cursor-not-allowed"
+        className="group relative grid h-36 w-36 place-items-center rounded-full outline-none focus-visible:ring-4 focus-visible:ring-accent/40 disabled:cursor-not-allowed"
       >
+        {/* audio halo */}
         <span
           className="absolute inset-0 rounded-full transition-transform duration-100"
           style={{
+            transform: `scale(${scale + 0.12})`,
+            background: `radial-gradient(circle, ${core}33 0%, ${core}00 70%)`,
+          }}
+        />
+        <span
+          className="absolute inset-3 rounded-full group-hover:[scale:1.05] group-disabled:[scale:1]"
+          style={{
+            transition: "transform 100ms linear, scale 300ms cubic-bezier(0.2, 0.7, 0.2, 1)",
             transform: `scale(${scale})`,
-            background: `radial-gradient(circle at 35% 30%, ${b} 0%, ${a} 45%, transparent 72%)`,
-            boxShadow: `0 0 ${50 + level * 90}px ${8 + level * 20}px ${a}66`,
+            background: `radial-gradient(circle at 38% 32%, ${core} 0%, ${core} 38%, ${rim} 100%)`,
+            boxShadow: `0 0 0 1px ${rim}, 0 18px 50px -12px ${core}66`,
             animation: state === "idle" ? "orb-breathe 4s ease-in-out infinite" : undefined,
           }}
         />
         {spinning && (
           <span
-            className="absolute -inset-3 rounded-full"
+            className="absolute inset-0 rounded-full"
             style={{
-              background: `conic-gradient(from 0deg, transparent 0deg, ${b} 60deg, transparent 140deg)`,
-              mask: "radial-gradient(circle, transparent 62%, #000 64%)",
-              WebkitMask: "radial-gradient(circle, transparent 62%, #000 64%)",
+              background: `conic-gradient(from 0deg, transparent 0deg, ${core} 70deg, transparent 150deg)`,
+              mask: "radial-gradient(circle, transparent 66%, #000 67.5%, #000 69%, transparent 70.5%)",
+              WebkitMask: "radial-gradient(circle, transparent 66%, #000 67.5%, #000 69%, transparent 70.5%)",
               animation: "orb-spin 1.2s linear infinite",
             }}
           />
         )}
-        <span className="relative font-display text-sm font-semibold text-white drop-shadow">
+        <span className="relative font-display text-[13px] font-semibold" style={{ color: text }}>
           {state === "idle" || state === "ended" || state === "error" ? label : ""}
         </span>
       </button>
-      <span data-testid="orb-state" className="text-xs font-medium uppercase tracking-[0.25em] text-muted">
+      <span
+        key={state}
+        data-testid="orb-state"
+        className="rise-in font-mono text-[11px] uppercase tracking-[0.2em] text-muted"
+      >
         {LABEL[state]}
       </span>
       <style>{`
-        @keyframes orb-breathe { 0%,100% { transform: scale(0.96); } 50% { transform: scale(1.04); } }
+        @keyframes orb-breathe { 0%,100% { transform: scale(0.97); } 50% { transform: scale(1.03); } }
         @keyframes orb-spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>

@@ -16,7 +16,7 @@ export interface Conversation {
   conversation_date: string;
   participants: string[];
   self_speaker: string | null;
-  source_type: "paste" | "upload";
+  source_type: "paste" | "upload" | "voice";
   original_filename: string | null;
   status: ConversationStatus;
   error_message: string | null;
@@ -135,6 +135,7 @@ export type CallEvent =
       tool: string;
       question?: string | null;
       standalone_query?: string | null;
+      note?: string | null;
     }
   | {
       type: "tool_call_completed";
@@ -145,6 +146,8 @@ export type CallEvent =
       timings_ms?: Record<string, number>;
       results?: Evidence[];
       context?: { conversation: string; date: string; when: string; lines: { speaker: string | null; text: string }[] };
+      note?: string;
+      conversation_id?: string | null;
     }
   | { type: "tool_call_failed"; tool_call_id: string; tool: string }
   | { type: "call_ended"; status: string }
@@ -163,6 +166,8 @@ export interface MemoryNode {
   conversation_date: string;
   chunk_ref: string | null;
   cluster: number | null;
+  /** Client-only: a just-saved voice note still being processed into real memories. */
+  pending?: boolean;
 }
 
 export interface MemoryGraph {
@@ -170,3 +175,14 @@ export interface MemoryGraph {
   clusters: { id: number; label: string; size: number }[];
   edges: { a: string; b: string; type: "similar" | "supersedes" | "conflicts"; weight: number }[];
 }
+
+export type MemoryEvent =
+  | { type: "conversation_processing"; conversation_id: string; title: string }
+  | {
+      type: "conversation_ready";
+      conversation_id: string;
+      title: string;
+      source_type: Conversation["source_type"];
+      memories: { id: string; kind: MemoryKind; statement: string; decision_state: DecisionState | null }[];
+    }
+  | { type: "conversation_failed"; conversation_id: string; title: string; error: string };

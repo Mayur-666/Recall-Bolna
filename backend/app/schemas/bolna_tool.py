@@ -61,3 +61,13 @@ class SearchToolRequest(_ToolBase):
 
 class SourceToolRequest(_ToolBase):
     ref: str = Field(min_length=3, max_length=40)
+
+
+class SaveMemoryToolRequest(_ToolBase):
+    # What the user asked Recall to remember, in their own (first-person) words.
+    note: str = Field(min_length=3, max_length=1000)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _clean_note(cls, v: Any) -> str:
+        return clean_param(v) or ""

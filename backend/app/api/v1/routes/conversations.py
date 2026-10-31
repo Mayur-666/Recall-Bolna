@@ -14,6 +14,7 @@ from app.repositories.memory_items import MemoryItemsRepo
 from app.repositories.segments import SegmentsRepo
 from app.schemas.conversation import ConversationDetail, ConversationOut, MemoryItemOut, SegmentOut
 from app.services.ingestion import IngestionService, decode_upload
+from app.workers.ingestion_worker import wake_worker
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -55,6 +56,7 @@ async def create_conversation(
         filename=filename,
     )
     await db.commit()
+    wake_worker()
     return conv
 
 
@@ -94,6 +96,7 @@ async def retry_conversation(
 ) -> Conversation:
     conv = await IngestionService(db).retry(user.id, conversation_id)
     await db.commit()
+    wake_worker()
     return conv
 
 

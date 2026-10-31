@@ -111,11 +111,43 @@ def build_tools(public_base_url: str, tool_token: str) -> dict[str, Any]:
         f"{base}/api/v1/bolna/tools/get_source_context",
         tool_token,
     )
-    tools = [search, context]
+    save = _tool(
+        "save_memory",
+        "Save something the user wants Recall to remember: a decision, a plan, a promise, a date, or a fact they "
+        "state about their own work. Use it when the user says remember, note, save, keep in mind, or simply tells "
+        "you a decision or plan to keep. Never use it for questions, and never save your own answers.",
+        "Got it, saving that.",
+        {
+            "note": {
+                "type": "string",
+                "description": "What to remember, as the user said it, in first person and complete on its own: "
+                "resolve 'it', 'that', 'tomorrow' etc. from this call (e.g. 'We moved the investor demo to Friday, "
+                "November 6.'). Do not add anything the user didn't say.",
+            },
+            **_SESSION_PROPS,
+        },
+        ["note"],
+        f"{base}/api/v1/bolna/tools/save_memory",
+        tool_token,
+    )
+    tools = [search, context, save]
     return {
         "tools": tools,
         "tools_params": {t["name"]: copy.deepcopy(t["value"]) for t in tools},
     }
+
+
+# Bolna's "Hangup using a prompt": after each turn the LLM checks this against the conversation and,
+# when it says the call is over, Bolna speaks CLOSING and hangs up. Written to never cut off a question
+# or a "remember that…" that is still in progress.
+HANGUP_PROMPT = (
+    "The call is complete only if the user's latest message clearly ends it: they say goodbye or bye, "
+    "\"that's all\", \"I'm done\", \"nothing else\", \"thanks, bye\", \"end the call\" or \"hang up\", or they "
+    "decline when asked if they need anything else. It is NOT complete if the latest message asks a question, "
+    "asks Recall to remember or save something, or is only \"thanks\" or \"okay\" followed by anything else. "
+    "If unsure, the call is not complete."
+)
+CLOSING = "Glad I could help. Talk soon."
 
 
 def build_task_config() -> dict[str, Any]:
@@ -123,7 +155,17 @@ def build_task_config() -> dict[str, Any]:
         "number_of_words_for_interruption": 2,
         "interruption_backoff_period": 150,
         "incremental_delay": 300,
-        "hangup_after_silence": 20,
+        # Generous silence/length limits: a web caller may need a few seconds to fix their mic, and a
+        # 90 s hard cap (Bolna's default call_terminate) cuts demos mid-answer.
+        "hangup_after_silence": 45,
+        "trigger_user_online_message_after": 15,
+        "call_terminate": 600,
+        # End the call when the user says goodbye (previously the call stayed open until the silence timeout).
+        "hangup_after_LLMCall": True,
+        "call_cancellation_prompt": HANGUP_PROMPT,
+        "call_hangup_message": CLOSING,
+        # Speaking over the closing cancels the hang-up, so a mis-detected goodbye isn't final.
+        "interruptible_hangup_message": True,
     }
 
 

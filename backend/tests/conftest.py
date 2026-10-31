@@ -15,6 +15,9 @@ os.environ.update(
         "PUBLIC_BASE_URL": "",
         "GOOGLE_CLIENT_ID": "",
         "GOOGLE_CLIENT_SECRET": "",
+        "CARTESIA_API_KEY": "",
+        "KOKORO_URL": "",
+        "TTS_VOICE_ID": "",
     }
 )
 

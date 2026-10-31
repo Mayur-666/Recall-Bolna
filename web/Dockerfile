@@ -18,7 +18,8 @@ ARG BACKEND_URL=http://backend:8000
 ENV BACKEND_URL=$BACKEND_URL NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# public/ isn't tracked in git (the app has no static files there), so make sure it exists for the copy below.
+RUN mkdir -p public && npm run build
 
 FROM node:22-alpine AS run
 WORKDIR /app

@@ -15,6 +15,7 @@ import type { CallEvent, MemoryGraph, SearchResult } from "@/lib/types";
 import { useCallEvents } from "@/lib/use-call-events";
 import { useMemoryEvents } from "@/lib/use-memory-events";
 import { canSpeak, speak, stopSpeaking } from "@/lib/speech";
+import { useDictation } from "@/lib/use-dictation";
 import { micConstraints, useMicrophones } from "@/lib/use-microphones";
 
 const SETUP_HINT = " See docs/bolna-setup.md.";
@@ -471,7 +472,7 @@ function SpacePageContent() {
 
   function sayAloud(text: string) {
     if (!speakOn || inCall || !canSpeak()) return;
-    speak(text, {
+    void speak(text, {
       onStart: () => setSpeaking(true),
       onEnd: () => {
         setSpeaking(false);
@@ -479,6 +480,19 @@ function SpacePageContent() {
       },
       onLevel: setSpeechLevel,
     });
+  }
+
+  // Speak into the ask box: words stream in as you talk, and the question is asked when you stop.
+  const dictation = useDictation({
+    onInterim: (t) => setQuestion(t),
+    onFinal: (t) => void handleAskText(t),
+  });
+
+  function toggleDictation() {
+    if (dictation.listening) return dictation.stop();
+    stopSpeaking();
+    setSpeaking(false);
+    dictation.start();
   }
 
   async function handleAskText(q: string) {
@@ -677,10 +691,29 @@ function SpacePageContent() {
           <input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Type a question, or tap the orb and ask out loud"
+            placeholder={dictation.listening ? "Listening… ask your question" : "Type or speak a question — or tap the orb for a call"}
             aria-label="Try a question"
             className="flex-1 bg-transparent px-1 text-sm text-ink outline-none placeholder:text-muted"
           />
+          {dictation.supported && !inCall && (
+            <button
+              type="button"
+              onClick={toggleDictation}
+              aria-pressed={dictation.listening}
+              aria-label={dictation.listening ? "Stop listening" : "Ask by voice"}
+              title={dictation.listening ? "Stop listening" : "Ask by voice"}
+              className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-lg transition ${
+                dictation.listening ? "bg-[#e07a6e]/15 text-[#f0b2a9]" : "text-muted hover:bg-white/5 hover:text-ink"
+              }`}
+            >
+              {dictation.listening && <span className="absolute inset-0 animate-ping rounded-lg bg-[#e07a6e]/20" aria-hidden />}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="9" y="2" width="6" height="12" rx="3" />
+                <path d="M5 10a7 7 0 0 0 14 0" />
+                <path d="M12 17v5" />
+              </svg>
+            </button>
+          )}
           <button
             type="submit"
             disabled={searching}
@@ -697,8 +730,8 @@ function SpacePageContent() {
           </button>
         </form>
 
-        {searchError && (
-          <p role="alert" className="pointer-events-auto text-xs text-[#f0b2a9]">{searchError}</p>
+        {(searchError || dictation.error) && (
+          <p role="alert" className="pointer-events-auto text-xs text-[#f0b2a9]">{searchError ?? dictation.error}</p>
         )}
 
         {showMicPicker && (

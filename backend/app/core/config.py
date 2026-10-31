@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     # @bolna/web-call 3.0.1 mints via this path (its Session type docs); bolna.ai docs show /web-call/session.
     BOLNA_WEB_CALL_SESSION_PATH: str = "/web-call/freeswitch-session"
     BOLNA_WEBHOOK_IP: str = "13.203.39.153"
+    # Spoken answers to typed questions. First choice: the local Kokoro service (compose "tts").
+    KOKORO_URL: str = ""
+    KOKORO_VOICE: str = "af_heart"
+    # Optional alternative: the Bolna agent's own Cartesia voice (Bolna has no standalone TTS API).
+    # Empty TTS_VOICE_ID/TTS_MODEL = follow the agent's synthesizer settings.
+    CARTESIA_API_KEY: str = ""
+    CARTESIA_BASE_URL: str = "https://api.cartesia.ai"
+    TTS_VOICE_ID: str = ""
+    TTS_MODEL: str = ""
     RECALL_TOOL_TOKEN: str = ""
     PUBLIC_BASE_URL: str = ""
     CALL_TOKEN_TTL_MIN: int = 30

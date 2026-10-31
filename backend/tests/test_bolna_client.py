@@ -88,7 +88,7 @@ async def test_missing_api_key_raises(monkeypatch):
 def test_build_tools_shape_matches_documented_schema():
     cfg = build_tools("https://abc.trycloudflare.com", "tool-secret")
     tools = {t["name"]: t for t in cfg["tools"]}
-    assert set(tools) == {"search_memories", "get_source_context"}
+    assert set(tools) == {"search_memories", "get_source_context", "save_memory"}
     for name, t in tools.items():
         assert t["key"] == "custom_task"
         assert t["pre_call_message"]
@@ -104,6 +104,7 @@ def test_build_tools_shape_matches_documented_schema():
         assert "user_id" not in props
     assert tools["search_memories"]["parameters"]["required"] == ["question"]
     assert tools["get_source_context"]["parameters"]["required"] == ["ref"]
+    assert tools["save_memory"]["parameters"]["required"] == ["note"]
     assert cfg["tools_params"]["search_memories"]["url"].endswith("/search_memories")
 
 
@@ -117,7 +118,14 @@ def test_task_config_interruption_values():
     assert tc["number_of_words_for_interruption"] == 2
     assert tc["interruption_backoff_period"] == 150
     assert tc["incremental_delay"] == 300
-    assert tc["hangup_after_silence"] == 20
+    assert tc["hangup_after_silence"] == 45
+    assert tc["call_terminate"] == 600
+    # Saying goodbye ends the call (prompt-based hangup), with an interruptible closing line.
+    assert tc["hangup_after_LLMCall"] is True
+    assert "goodbye" in tc["call_cancellation_prompt"].lower()
+    assert "remember" in tc["call_cancellation_prompt"].lower()  # never hang up on a save request
+    assert tc["call_hangup_message"]
+    assert tc["interruptible_hangup_message"] is True
 
 
 def test_merge_for_put_preserves_provider_blocks():
@@ -150,7 +158,7 @@ def test_merge_for_put_preserves_provider_blocks():
     assert task["tools_config"]["llm_agent"]["llm_config"]["model"] == "gpt-4.1-mini"
     assert task["tools_config"]["api_tools"] == tools
     assert task["task_config"]["voicemail"] is False  # untouched keys kept
-    assert task["task_config"]["hangup_after_silence"] == 20
+    assert task["task_config"]["hangup_after_silence"] == 45
     assert payload["agent_prompts"]["task_1"]["system_prompt"] == "new prompt"
     assert payload["agent_config"]["agent_welcome_message"] == "hi {user_name}"
     assert payload["agent_config"]["webhook_url"] == "https://x/wh"

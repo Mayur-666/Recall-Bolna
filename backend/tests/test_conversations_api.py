@@ -151,3 +151,7 @@ async def test_detail_and_delete(client, authed):
 
 async def test_requires_auth_401(client):
     assert (await client.get("/api/v1/conversations")).status_code == 401
+
+
+async def test_memory_events_stream_requires_login(client):
+    assert (await client.get("/api/v1/memories/events")).status_code == 401

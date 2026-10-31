@@ -11,15 +11,17 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_sessionmaker
 from app.integrations.model_client import ModelClientProtocol, ModelError, get_model_client
-from app.models import Chunk, Conversation, IngestionJob, TranscriptSegment
+from app.models import Chunk, Conversation, IngestionJob, MemoryItem, TranscriptSegment
 from app.repositories.chunks import ChunksRepo, clear_derived
 from app.repositories.jobs import JobsRepo
 from app.services.chunker import ChunkDraft, build_chunks
 from app.services.decision_linker import DecisionLinker
+from app.services.events import get_memory_bus
 from app.services.extraction import ExtractionService
 from app.services.transcript_parser import parse_transcript
 
@@ -112,6 +114,12 @@ async def process_job(job_id: uuid.UUID, model: ModelClientProtocol | None = Non
         job.attempts += 1
         job.started_at = datetime.now(UTC)
         await session.commit()
+        user_id, title = conv.user_id, conv.title
+    bus = get_memory_bus()
+    bus.publish(
+        user_id,
+        {"type": "conversation_processing", "conversation_id": str(job.conversation_id), "title": title},
+    )
 
     started = time.perf_counter()
     try:
@@ -140,6 +148,22 @@ async def process_job(job_id: uuid.UUID, model: ModelClientProtocol | None = Non
             job_row.finished_at = datetime.now(UTC)
             job_row.timings = {**timings, "total_ms": round((time.perf_counter() - started) * 1000, 1)}
             await session.commit()
+            items = (
+                await session.scalars(select(MemoryItem).where(MemoryItem.conversation_id == conv.id))
+            ).all()
+            bus.publish(
+                user_id,
+                {
+                    "type": "conversation_ready",
+                    "conversation_id": str(conv.id),
+                    "title": title,
+                    "source_type": conv.source_type,
+                    "memories": [
+                        {"id": str(m.id), "kind": m.kind, "statement": m.statement, "decision_state": m.decision_state}
+                        for m in items
+                    ],
+                },
+            )
     except Exception as exc:
         log.warning("ingestion job %s failed: %s", job_id, type(exc).__name__)
         async with sm() as session:
@@ -153,9 +177,40 @@ async def process_job(job_id: uuid.UUID, model: ModelClientProtocol | None = Non
                 job_row.last_error = _public_error(exc)
                 job_row.finished_at = datetime.now(UTC)
             await session.commit()
+        bus.publish(
+            user_id,
+            {
+                "type": "conversation_failed",
+                "conversation_id": str(job.conversation_id),
+                "title": title,
+                "error": _public_error(exc),
+            },
+        )
+
+
+_wake: asyncio.Event | None = None
+
+
+def wake_worker() -> None:
+    """Start on a just-queued job now instead of at the next poll (call after the job is committed)."""
+    if _wake is not None:
+        _wake.set()
+
+
+async def _sleep(stop: asyncio.Event, wake: asyncio.Event, timeout: float) -> None:
+    if not wake.is_set():
+        waiters = [asyncio.create_task(stop.wait()), asyncio.create_task(wake.wait())]
+        try:
+            await asyncio.wait(waiters, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for w in waiters:
+                w.cancel()
+    wake.clear()
 
 
 async def run_worker(stop: asyncio.Event, poll_s: float = 1.0) -> None:
+    global _wake
+    _wake = wake = asyncio.Event()  # created here so it belongs to the running event loop
     sm = get_sessionmaker()
     while not stop.is_set():
         job_id: uuid.UUID | None = None
@@ -170,7 +225,4 @@ async def run_worker(stop: asyncio.Event, poll_s: float = 1.0) -> None:
                 continue
         except Exception:
             log.exception("worker loop error")
-        try:
-            await asyncio.wait_for(stop.wait(), timeout=poll_s)
-        except TimeoutError:
-            pass
+        await _sleep(stop, wake, poll_s)

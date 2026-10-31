@@ -121,3 +121,80 @@ async def test_two_workers_dont_double_claim(make_user):
         assert job_a.id != job_b.id
         await a.rollback()
         await b.rollback()
+
+
+async def _collect(user_id, until_type, out):
+    from app.services.events import get_memory_bus
+
+    async for event in get_memory_bus().subscribe(user_id):
+        out.append(event)
+        if event["type"] == until_type:
+            return
+
+
+async def test_worker_publishes_live_memory_events_to_the_owner_only(make_user):
+    import asyncio
+
+    user, _ = await make_user()
+    other, _ = await make_user()
+    conv_id, job_id = await _new_conversation(user)
+    mine, theirs = [], []
+    task = asyncio.create_task(_collect(user.id, "conversation_ready", mine))
+    spy = asyncio.create_task(_collect(other.id, "conversation_ready", theirs))
+    await asyncio.sleep(0.05)
+
+    await process_job(job_id, FakeModelClient())
+    await asyncio.wait_for(task, timeout=2)
+    spy.cancel()
+
+    assert [e["type"] for e in mine] == ["conversation_processing", "conversation_ready"]
+    ready = mine[-1]
+    assert ready["conversation_id"] == str(conv_id) and ready["title"] == "API sync"
+    assert ready["source_type"] == "paste"
+    assert isinstance(ready["memories"], list)
+    assert all({"id", "kind", "statement"} <= set(m) for m in ready["memories"])
+    assert theirs == []
+
+
+async def test_worker_publishes_failure_event(make_user):
+    import asyncio
+
+    user, _ = await make_user()
+    _, job_id = await _new_conversation(user)
+    events = []
+    task = asyncio.create_task(_collect(user.id, "conversation_failed", events))
+    await asyncio.sleep(0.05)
+    model = FakeModelClient()
+    model.embed_fail = ModelError("embedding endpoint returned 500")
+    await process_job(job_id, model)
+    await asyncio.wait_for(task, timeout=2)
+    assert events[-1]["type"] == "conversation_failed" and events[-1]["error"]
+
+
+async def test_wake_worker_starts_a_queued_job_without_waiting_for_the_poll(make_user, monkeypatch):
+    import asyncio
+    import time
+
+    from app.integrations import model_client
+    from app.workers import ingestion_worker
+
+    monkeypatch.setattr(model_client, "get_model_client", lambda: FakeModelClient())
+    monkeypatch.setattr(ingestion_worker, "get_model_client", lambda: FakeModelClient())
+    user, _ = await make_user()
+    stop = asyncio.Event()
+    worker = asyncio.create_task(ingestion_worker.run_worker(stop, poll_s=30))  # a poll would take 30 s
+    await asyncio.sleep(0.2)  # worker finds nothing and goes to sleep
+    conv_id, _ = await _new_conversation(user)
+    started = time.perf_counter()
+    ingestion_worker.wake_worker()
+    try:
+        for _ in range(100):
+            async with get_sessionmaker()() as s:
+                if (await s.get(Conversation, conv_id)).status == "ready":
+                    break
+            await asyncio.sleep(0.05)
+        assert (await _counts(conv_id))[0].status == "ready"
+        assert time.perf_counter() - started < 5
+    finally:
+        stop.set()
+        await asyncio.wait_for(worker, timeout=5)

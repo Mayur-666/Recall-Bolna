@@ -58,6 +58,22 @@ class ModelClient:
         old, self._http = self._http, self._new_http()
         await old.aclose()
 
+    async def _post(self, path: str, payload: dict[str, Any], timeout: float | None = None) -> httpx.Response:
+        kwargs: dict[str, Any] = {"json": payload}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        try:
+            return await self._http.post(path, **kwargs)
+        except httpx.TimeoutException:
+            raise
+        except httpx.TransportError as exc:
+            # A keep-alive connection the server already dropped (Ollama unloading a model, a container
+            # restart) fails the next request with ReadError/RemoteProtocolError. That used to fail the
+            # whole ingestion job; one retry on a fresh connection is enough.
+            log.warning("model request %s failed (%s); retrying on a fresh connection", path, type(exc).__name__)
+            await self._recycle_http()
+            return await self._http.post(path, **kwargs)
+
     async def embed(
         self,
         texts: list[str],
@@ -68,7 +84,7 @@ class ModelClient:
         prefix = s.EMBED_QUERY_PREFIX if kind == "query" else s.EMBED_DOC_PREFIX
         payload = {"model": s.EMBED_MODEL, "input": [prefix + t for t in texts]}
         try:
-            resp = await self._http.post("/embeddings", json=payload, timeout=timeout_s or 60.0)
+            resp = await self._post("/embeddings", payload, timeout_s or 60.0)
         except httpx.TimeoutException as exc:
             await self._recycle_http()
             raise EmbeddingTimeout("embedding request timed out") from exc
@@ -105,7 +121,7 @@ class ModelClient:
         }
         for attempt in (1, 2):
             try:
-                resp = await self._http.post("/chat/completions", json=payload)
+                resp = await self._post("/chat/completions", payload)
             except httpx.HTTPError as exc:
                 raise ModelError(f"chat request failed: {type(exc).__name__}") from exc
             if resp.status_code != 200:

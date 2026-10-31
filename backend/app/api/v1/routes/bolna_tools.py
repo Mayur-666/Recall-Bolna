@@ -17,14 +17,16 @@ from app.core.config import get_settings
 from app.core.errors import AuthError, RateLimitError
 from app.db.session import get_db
 from app.integrations import model_client
-from app.models import CallSession, ToolCall
+from app.models import CallSession, ToolCall, User
 from app.repositories.tool_calls import ToolCallsRepo
-from app.schemas.bolna_tool import SearchToolRequest, SourceToolRequest
+from app.schemas.bolna_tool import SaveMemoryToolRequest, SearchToolRequest, SourceToolRequest
 from app.schemas.search import Evidence, SearchQuery, SearchResult
 from app.services.call_sessions import CallSessionService
 from app.services.dates import humanize, today_local
 from app.services.events import get_event_bus
 from app.services.retrieval import RetrievalService
+from app.services.voice_notes import save_voice_note
+from app.workers.ingestion_worker import wake_worker
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/bolna/tools", tags=["bolna-tools"])
@@ -32,6 +34,12 @@ router = APIRouter(prefix="/bolna/tools", tags=["bolna-tools"])
 G_ERROR = (
     "Search failed. Tell the user you couldn't search their memories right now and suggest trying again."
 )
+G_SAVED = (
+    "Saved. Confirm in one short sentence that you'll remember it, repeating the key point in a few words. "
+    "It becomes searchable in a few seconds, once it has been processed."
+)
+G_ALREADY = "This exact note was already saved. Tell the user you already have it."
+G_SAVE_ERROR = "Saving failed. Tell the user you couldn't save that right now and suggest trying again."
 
 
 async def bolna_tool_auth(request: Request) -> None:
@@ -216,3 +224,60 @@ async def get_source_context(body: SourceToolRequest, db: AsyncSession = Depends
         },
     )
     return payload
+
+
+@router.post("/save_memory", dependencies=[Depends(bolna_tool_auth)])
+async def save_memory(body: SaveMemoryToolRequest, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    started = time.perf_counter()
+    cs = await _open_call(db, body.recall_session, body.execution_id)
+    call = await ToolCallsRepo(db).add(
+        ToolCall(
+            call_session_id=cs.id,
+            user_id=cs.user_id,
+            tool_name="save_memory",
+            original_question=body.note,
+            args={"note": body.note},
+            result_status="started",
+        )
+    )
+    await db.commit()
+    bus = get_event_bus()
+    bus.publish(
+        cs.id, {"type": "tool_call_started", "tool_call_id": str(call.id), "tool": "save_memory", "note": body.note}
+    )
+
+    try:
+        user = await db.get(User, cs.user_id)
+        if user is None:
+            raise AuthError("Unknown user.")
+        conv, created = await save_voice_note(db, user, body.note, today_local())
+        await db.commit()
+        if created:
+            wake_worker()
+    except Exception:
+        log.exception("save_memory failed")
+        await db.rollback()
+        call.result_status = "error"
+        call.timings_ms = {"total": round((time.perf_counter() - started) * 1000, 1)}
+        db.add(call)
+        await db.commit()
+        bus.publish(cs.id, {"type": "tool_call_failed", "tool_call_id": str(call.id), "tool": "save_memory"})
+        return {"status": "error", "guidance": G_SAVE_ERROR}
+
+    status = "saved" if created else "already_saved"
+    call.result_status = status
+    call.result = {"conversation_id": str(conv.id) if conv else None}
+    call.timings_ms = {"total": round((time.perf_counter() - started) * 1000, 1)}
+    await db.commit()
+    bus.publish(
+        cs.id,
+        {
+            "type": "tool_call_completed",
+            "tool_call_id": str(call.id),
+            "tool": "save_memory",
+            "status": status,
+            "note": body.note,
+            "conversation_id": call.result["conversation_id"],
+        },
+    )
+    return {"status": status, "guidance": G_SAVED if created else G_ALREADY}

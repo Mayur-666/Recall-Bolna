@@ -101,3 +101,29 @@ async def test_embed_timeout_recycles_http_connection():
     assert client._http is not before
     assert before.is_closed
     await client.embed(["y"], kind="query")
+
+
+@respx.mock
+async def test_dropped_connection_is_retried_once_on_a_fresh_client():
+    # Regression: a voice note failed ingestion with "embedding request failed: ReadError" right after a
+    # backend restart, although Ollama was healthy.
+    route = respx.post(f"{BASE}/embeddings").mock(side_effect=[httpx.ReadError("closed"), _emb_response(1)])
+    client = ModelClient()
+    before = client._http
+    [vec] = await client.embed(["x"], kind="query")
+    assert len(vec) == DIM and route.call_count == 2
+    assert client._http is not before and before.is_closed
+
+
+@respx.mock
+async def test_chat_retries_dropped_connection_too():
+    respx.post(f"{BASE}/chat/completions").mock(side_effect=[httpx.RemoteProtocolError("eof"), _chat('{"a": 1}')])
+    assert await ModelClient().chat_json("s", "u", {"type": "object"}) == {"a": 1}
+
+
+@respx.mock
+async def test_connection_failing_twice_still_raises_ModelError():
+    respx.post(f"{BASE}/embeddings").mock(side_effect=httpx.ConnectError("down"))
+    with pytest.raises(ModelError):
+        await ModelClient().embed(["x"], kind="query")
+

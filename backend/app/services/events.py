@@ -1,4 +1,8 @@
-"""In-process pub/sub for live call events (single backend process; see README limitations)."""
+"""In-process pub/sub (single backend process; see README limitations).
+
+Two buses: live call events keyed by call session id, and memory updates keyed by user id
+(a conversation started/finished processing), so an open dashboard shows new memories as they form.
+"""
 
 import asyncio
 import uuid
@@ -40,4 +44,10 @@ class EventBus:
 
 @lru_cache
 def get_event_bus() -> EventBus:
+    return EventBus()
+
+
+@lru_cache
+def get_memory_bus() -> EventBus:
+    """Keyed by user id: conversation_processing / conversation_ready / conversation_failed."""
     return EventBus()

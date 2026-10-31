@@ -20,7 +20,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     ...(init.headers ?? {}),
   };
   const res = await fetch(path, { credentials: "same-origin", ...init, headers });
-  if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/v1/auth/login")) {
+  if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/v1/auth/")) {
     window.location.href = "/login";
   }
   if (!res.ok) {

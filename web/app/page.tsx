@@ -107,7 +107,7 @@ function Hero() {
       <p className="enter font-mono text-xs uppercase tracking-[0.18em] text-muted" style={delay(0)}>
         Voice memory for your meetings
       </p>
-      <h1 className="mt-5 max-w-3xl font-display text-[40px] font-semibold leading-[1.05] tracking-[-0.03em] sm:text-6xl">
+      <h1 className="mt-5 max-w-4xl font-display text-[40px] font-semibold leading-[1.05] tracking-[-0.03em] sm:text-6xl">
         <span className="enter block" style={delay(90)}>Ask what was decided.</span>
         <span className="enter block" style={delay(200)}>
           Hear the answer, <mark className="hero sweep" style={delay(750)}>see the line</mark>.

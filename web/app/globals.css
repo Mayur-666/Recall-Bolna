@@ -2,18 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Recall palette: warm graphite with one accent — highlighter yellow, because the product's job
+ * is to highlight the exact line that proves an answer. Everything else stays neutral.
+ */
 :root {
-  --font-inter: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --paper: #070a16;
-  --surface: rgba(20, 26, 48, 0.72);
-  --surface-solid: #111733;
-  --ink: #e8ebff;
-  --muted: #8f97c2;
-  --line: rgba(143, 151, 194, 0.18);
-  --accent: #8b7bff;
-  --accent-2: #3ee6c4;
-  --accent-soft: rgba(139, 123, 255, 0.16);
+  --font-inter: "Geist", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Geist", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --paper: #0d0d0c;
+  --surface: rgba(29, 28, 26, 0.86);
+  --surface-solid: #1a1917;
+  --raised: #24231f;
+  --ink: #edebe6;
+  --ink-sub: #c9c6bf;
+  --muted: #8f8c84;
+  --line: rgba(237, 235, 230, 0.1);
+  --accent: #f2c94c;
+  --accent-2: #f6dc8c;
+  --accent-soft: rgba(242, 201, 76, 0.12);
+  --on-accent: #17150f;
 }
 
 html {
@@ -26,64 +34,51 @@ body {
   min-height: 100vh;
 }
 
-/* Aurora: slow-moving colour fields behind everything. */
-.aurora {
-  position: fixed;
-  inset: -20%;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(40% 35% at 20% 20%, rgba(124, 92, 255, 0.28), transparent 70%),
-    radial-gradient(35% 30% at 80% 10%, rgba(62, 230, 196, 0.16), transparent 70%),
-    radial-gradient(45% 40% at 70% 85%, rgba(255, 92, 170, 0.14), transparent 70%);
-  filter: blur(20px);
-  animation: aurora-drift 26s ease-in-out infinite alternate;
-}
-
-@keyframes aurora-drift {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(3%, -2%, 0) scale(1.06);
-  }
-  100% {
-    transform: translate3d(-3%, 2%, 0) scale(1.02);
-  }
-}
-
 .glass {
   background: var(--surface);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--line);
 }
 
+/* Kept for older markup: a plain accent, no gradient. */
 .text-gradient {
-  background: linear-gradient(92deg, #c7bfff 0%, #8b7bff 35%, #3ee6c4 75%, #b7fff0 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--accent);
 }
 
-mark.evidence {
-  background: rgba(255, 214, 102, 0.22);
-  color: #fff3c4;
-  border-radius: 4px;
-  padding: 0 2px;
+/* Highlighter marks — the visual core of "show me the proof". background-size is what the
+   sweep animations below animate, so these use background-image, never the shorthand. */
+mark.evidence,
+mark.hl {
+  background-image: linear-gradient(transparent 12%, rgba(242, 201, 76, 0.28) 12%, rgba(242, 201, 76, 0.28) 88%, transparent 88%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-color: transparent;
+  color: inherit;
+  padding: 0 1px;
   scroll-margin-top: 140px;
-  box-shadow: inset 0 -1px 0 rgba(255, 214, 102, 0.6);
+  transition: background-image 0.2s ease, color 0.2s ease;
 }
 
-mark.evidence.active {
-  background: rgba(255, 214, 102, 0.5);
-  color: #fffbe8;
-  box-shadow: 0 0 0 2px rgba(255, 214, 102, 0.8), 0 0 24px rgba(255, 214, 102, 0.45);
+mark.evidence.active,
+mark.hl.strong {
+  background-image: linear-gradient(transparent 8%, rgba(242, 201, 76, 0.55) 8%, rgba(242, 201, 76, 0.55) 92%, transparent 92%);
+  color: #fffbea;
+}
+
+/* Hero accent: highlighter stroke under accent-coloured words. */
+mark.hero {
+  color: var(--accent);
+  background-image: linear-gradient(transparent 64%, rgba(242, 201, 76, 0.22) 64%, rgba(242, 201, 76, 0.22) 92%, transparent 92%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-color: transparent;
+  padding: 0 2px;
 }
 
 @keyframes rise-in {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.98);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -92,17 +87,311 @@ mark.evidence.active {
 }
 
 .rise-in {
-  animation: rise-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: rise-in 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* ---------- Motion system ---------------------------------------------------------------
+ * One easing, three durations (0.2s feedback, 0.5s entrances, 0.9s sweeps). Everything collapses
+ * to its final state under prefers-reduced-motion (see the media query at the end).
+ */
+:root {
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-sweep: cubic-bezier(0.65, 0.05, 0.25, 1);
+}
+
+/* Page-load entrance; stagger with style={{ animationDelay }}. */
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.enter {
+  animation: enter 0.7s var(--ease-out) both;
+}
+
+/* Scroll reveal: <Reveal> adds .in once the element is on screen. Only armed after hydration
+   (html.motion-ready), so if JS never runs the content is simply visible. */
+html.motion-ready .reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.6s var(--ease-out),
+    transform 0.6s var(--ease-out);
+  transition-delay: var(--delay, 0ms);
+}
+
+html.motion-ready .reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* Highlighter sweep, left to right (and line by line across wrapped text). */
+@keyframes hl-sweep {
+  from {
+    background-size: 0% 100%;
+  }
+  to {
+    background-size: 100% 100%;
+  }
+}
+
+.sweep {
+  animation: hl-sweep 0.9s var(--ease-sweep) both;
+  animation-delay: var(--delay, 0ms);
+}
+
+html.motion-ready .reveal .sweep-on-reveal {
+  background-size: 0% 100%;
+  transition: background-size 0.9s var(--ease-sweep);
+  transition-delay: var(--sweep-delay, 400ms);
+}
+
+html.motion-ready .reveal.in .sweep-on-reveal {
+  background-size: 100% 100%;
+}
+
+/* A decision being replaced: the strike draws across, then the text dims. */
+.strike {
+  background-image: linear-gradient(rgba(224, 122, 110, 0.75), rgba(224, 122, 110, 0.75));
+  background-repeat: no-repeat;
+  background-position: 0 58%;
+  background-size: 100% 1.5px;
+}
+
+html.motion-ready .reveal .strike {
+  background-size: 0% 1.5px;
+  transition:
+    background-size 0.7s var(--ease-sweep),
+    color 0.4s ease;
+  transition-delay: var(--strike-delay, 500ms);
+}
+
+html.motion-ready .reveal.in .strike {
+  background-size: 100% 1.5px;
+}
+
+/* Small pop for chips and dots. */
+@keyframes pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.pop {
+  animation: pop 0.4s var(--ease-out) both;
+  animation-delay: var(--delay, 0ms);
+}
+
+html.motion-ready .reveal:not(.in) .pop-on-reveal {
+  opacity: 0;
+  transform: scale(0.85);
+}
+
+html.motion-ready .reveal .pop-on-reveal {
+  transition:
+    opacity 0.35s var(--ease-out),
+    transform 0.35s var(--ease-out);
+  transition-delay: var(--delay, 0ms);
+}
+
+/* Timeline spine that draws downward. */
+html.motion-ready .reveal .draw-down {
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 1s var(--ease-sweep) 0.15s;
+}
+
+html.motion-ready .reveal.in .draw-down {
+  transform: scaleY(1);
+}
+
+/* Autoplay countdown under the active demo question. */
+@keyframes countdown {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.countdown {
+  transform-origin: left;
+  animation: countdown linear both;
+}
+
+/* Equaliser bars for "hearing you". */
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.eq > span {
+  transform-origin: bottom;
+  animation: eq 0.9s ease-in-out infinite;
+}
+
+.eq > span:nth-child(2) {
+  animation-delay: -0.3s;
+}
+
+.eq > span:nth-child(3) {
+  animation-delay: -0.6s;
+}
+
+/* Error nudge. */
+@keyframes shake {
+  0%,
+  100% {
+    transform: none;
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+.shake {
+  animation: shake 0.4s ease both;
+}
+
+/* The markup uses tailwindcss-animate class names, which this project doesn't install;
+   give them a real (single) entrance so popovers and panels don't just snap in. */
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-in {
+  animation: animate-in 0.2s var(--ease-out) both;
+}
+
+/* Lists whose items rise in one after another. */
+.stagger > * {
+  animation: rise-in 0.35s var(--ease-out) both;
+  animation-delay: 280ms;
+}
+.stagger > :nth-child(1) { animation-delay: 0ms; }
+.stagger > :nth-child(2) { animation-delay: 40ms; }
+.stagger > :nth-child(3) { animation-delay: 80ms; }
+.stagger > :nth-child(4) { animation-delay: 120ms; }
+.stagger > :nth-child(5) { animation-delay: 160ms; }
+.stagger > :nth-child(6) { animation-delay: 200ms; }
+.stagger > :nth-child(7) { animation-delay: 240ms; }
+
+/* FAQ answers slide in when opened. */
+details[open] > :not(summary) {
+  animation: rise-in 0.3s var(--ease-out) both;
+}
+
+/* ---------- Micro-interactions everywhere ---------- */
+
+/* Press feedback. `scale` composes with any transform a button already has. */
+button:not(:disabled):active,
+a.btn:active,
+summary:active {
+  scale: 0.97;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(242, 201, 76, 0.7);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+/* Arrow nudge on hover for links/buttons that contain .nudge-x / .nudge-y. */
+.group:hover .nudge-x {
+  transform: translateX(3px);
+}
+
+.group:hover .nudge-y {
+  transform: translateY(2px);
+}
+
+.nudge-x,
+.nudge-y {
+  display: inline-block;
+  transition: transform 0.2s var(--ease-out);
+}
+
+/* Cards that lift slightly on hover. */
+/* `translate` (not transform) so it composes with entrance animations that hold transform. */
+.lift {
+  transition:
+    translate 0.2s var(--ease-out),
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.lift:hover {
+  translate: 0 -2px;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.caret::after {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: currentColor;
+  animation: caret-blink 1s steps(1) infinite;
 }
 
 ::selection {
-  background: rgba(139, 123, 255, 0.45);
+  background: rgba(242, 201, 76, 0.35);
 }
 
-/* Custom cosmic slim scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(143, 151, 194, 0.28) transparent;
+  scrollbar-color: rgba(237, 235, 230, 0.18) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -115,24 +404,27 @@ mark.evidence.active {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(143, 151, 194, 0.25);
+  background: rgba(237, 235, 230, 0.16);
   border-radius: 9999px;
-  transition: background 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 123, 255, 0.55);
+  background: rgba(237, 235, 230, 0.3);
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 5px;
-}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    animation-delay: 0ms !important;
+  }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(139, 123, 255, 0.28);
-  border-radius: 9999px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(62, 230, 196, 0.55);
+  html.motion-ready .reveal {
+    opacity: 1;
+    transform: none;
+  }
 }

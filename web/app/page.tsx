@@ -1,785 +1,561 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
-interface SampleEvidence {
-  question: string;
-  speaker: string;
-  title: string;
-  quote: string;
-  decisionState: "decided" | "proposed" | "superseded";
-  date: string;
-  kind: string;
-}
+import { EvidencePanel } from "@/components/evidence-panel";
+import { Logo } from "@/components/logo";
+import { CountUp, Reveal } from "@/components/motion";
+import { SpaceCanvas } from "@/components/space-canvas";
+import { DecisionStateChip } from "@/components/ui";
+import type { OrbState } from "@/components/voice-orb";
+import { DEMO_GRAPH, DEMO_SCENARIOS } from "@/lib/demo-data";
 
-const SAMPLE_DEMOS: Record<string, SampleEvidence> = {
-  db: {
-    question: "Which deployment provider did we pick?",
-    speaker: "Asha",
-    title: "Sprint 4 Architecture Sync",
-    quote: "Let's stick with AWS ECS for staging and migrate to GCP for production in Q2.",
-    decisionState: "decided",
-    date: "Oct 24, 2026",
-    kind: "Decision",
-  },
-  websocket: {
-    question: "What did Priya commit to regarding WebSockets?",
-    speaker: "Priya",
-    title: "Real-time Telemetry Review",
-    quote: "I will implement the heartbeat ping-pong handler and keep connection latency under 20ms by Friday.",
-    decisionState: "decided",
-    date: "Oct 22, 2026",
-    kind: "Commitment",
-  },
-  deadline: {
-    question: "When is the investor demo deadline?",
-    speaker: "Mayur",
-    title: "Weekly Founders Huddle",
-    quote: "The final slide deck and live sandbox build must be locked by November 2nd at 5 PM.",
-    decisionState: "proposed",
-    date: "Oct 25, 2026",
-    kind: "Date & Milestone",
-  },
-};
+type Phase = "listening" | "searching" | "answered";
 
-const FAQ_ITEMS = [
+// How long an answered question stays up before autoplay moves on.
+const AUTO_MS = 7500;
+
+const FAQ = [
   {
-    q: "How does Recall guarantee zero hallucinations?",
-    a: "Recall enforces strict evidence provenance gating. Every semantic match is evaluated against calibrated cosine similarity and RRF thresholds. If an answer cannot be verified with a timestamped quote from your uploaded transcripts, Recall directly acknowledges the absence of memory rather than fabricating details.",
+    q: "Where do the answers come from?",
+    a: "Only from transcripts you add. Recall splits each one into speaker turns, extracts decisions, commitments, dates and facts with a quote that must match the transcript exactly, and searches those with a mix of keyword and vector search. The voice agent can only answer from what that search returns.",
   },
   {
-    q: "How does the voice engine work?",
-    a: "Recall integrates the official Bolna WebRTC SDK with single-use session minting. Audio flows in real time with sub-second turn-taking latency. When you ask a question, the Bolna agent invokes authenticated backend retrieval tools, streams live tool execution events, and reads back the exact evidence.",
+    q: "What happens when it can't find something?",
+    a: "If nothing clears the similarity threshold, search returns “no reliable memory” and the agent says so. It may mention the closest match, but it tells you it might not answer the question.",
   },
   {
-    q: "Can I receive calls on my phone when away from the desktop?",
-    a: "Yes. In Mission Control, you can enter your E.164 phone number. Recall dispatches an outbound telephony call via Bolna directly to your cell phone so you can query your memories hands-free on the go.",
+    q: "How do I talk to it?",
+    a: "Tap the orb in the app to start a browser call (Bolna Web Call — it needs microphone access), or enter your number and Recall calls your phone. The agent calls Recall's search while you're on the line, and the matching memories light up on screen as it answers.",
   },
   {
-    q: "What transcript and audio formats can I upload?",
-    a: "You can import raw text (.txt), Markdown (.md), WebVTT (.vtt), and SubRip (.srt) meeting transcripts from Zoom, Google Meet, Teams, or Otter. Recall automatically extracts speakers, timestamps, and semantic entities.",
+    q: "Can I just tell it things to remember?",
+    a: "Yes. On a call, say “remember that we moved the demo to Friday” or “note that I'll send Priya the deck by Thursday”. Recall saves it as a voice note in your library, pulls out the decision, promise or date in a few seconds, and answers from it next time — including “what did I promise?”, because it knows the note is yours.",
+  },
+  {
+    q: "What can I upload?",
+    a: "Plain text, Markdown, WebVTT or SubRip transcripts — exports from Zoom, Meet, Teams or Otter work. Label lines as “Name: …” so Recall knows who said what; unlabeled lines are never attributed to anyone.",
   },
 ];
 
-export default function LandingPage() {
-  const [activeDemoKey, setActiveDemoKey] = useState<string>("db");
-  const [activePersona, setActivePersona] = useState<"eng" | "pm" | "founder">("eng");
-  const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [isDemoSpeaking, setIsDemoSpeaking] = useState<boolean>(false);
+const delay = (ms: number) => ({ "--delay": `${ms}ms`, animationDelay: `${ms}ms` }) as CSSProperties;
 
-  const currentDemo = SAMPLE_DEMOS[activeDemoKey];
+export default function LandingPage() {
+  return (
+    <div className="min-h-screen bg-paper text-ink">
+      <Header />
+      <Hero />
+      <Demo />
+      <HowItWorks />
+      <Changes />
+      <Honest />
+      <Faq />
+      <Footer />
+    </div>
+  );
+}
+
+const navLink =
+  "relative py-1 transition hover:text-ink after:absolute after:inset-x-0 after:-bottom-0.5 after:h-px after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 hover:after:scale-x-100";
+
+function Header() {
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[#050814] text-ink selection:bg-accent/40 selection:text-white">
-      {/* Background Aurora */}
-      <div className="aurora pointer-events-none" aria-hidden />
-
-      {/* 1. Global Product Navbar */}
-      <header className="sticky top-0 z-50 border-b border-line/80 bg-paper/75 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
-          <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2.5 font-display text-lg font-bold tracking-tight text-white group">
-              <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-[#7c5cff] to-[#3ee6c4] text-sm font-black text-[#061018] shadow-[0_0_20px_rgba(124,92,255,0.7)] group-hover:scale-105 transition">
-                R
-              </span>
-              <span className="flex items-center gap-1.5">
-                Recall
-                <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent-2 border border-accent/20">
-                  v1.0 · Bolna
-                </span>
-              </span>
-            </Link>
-
-            <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-muted">
-              <a href="#product-sandbox" className="hover:text-white transition">Product Tour</a>
-              <a href="#features" className="hover:text-white transition">Capabilities</a>
-              <a href="#comparison" className="hover:text-white transition">Why Recall</a>
-              <a href="#workflow" className="hover:text-white transition">Workflow</a>
-              <a href="#faq" className="hover:text-white transition">FAQ</a>
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-ink hover:border-accent hover:text-white hover:bg-white/5 transition"
-            >
-              Sign In
-            </Link>
-
-            <Link
-              href="/space"
-              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#7c5cff] to-[#3ee6c4] px-5 py-2 text-xs font-bold text-[#061018] shadow-[0_0_25px_rgba(124,92,255,0.6)] transition hover:scale-[1.03] hover:shadow-[0_0_35px_rgba(62,230,196,0.85)]"
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
-              </span>
-              <span>Launch Space</span>
-              <span className="text-[10px] font-black">→</span>
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* 2. Hero Section */}
-      <section className="relative px-6 pt-16 pb-20 md:pt-24 md:pb-28 text-center">
-        <div className="mx-auto max-w-4xl">
-          {/* Release / Innovation Pill */}
-          <div className="inline-flex items-center gap-2.5 rounded-full border border-accent/30 bg-surface/80 px-4 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur-md hover:border-accent transition cursor-pointer">
-            <span className="flex h-2 w-2 rounded-full bg-accent-2 animate-pulse" />
-            <span className="font-semibold text-accent-2">Bolna Symphony Buildathon</span>
-            <span className="text-white/40">|</span>
-            <span className="text-muted text-[11px] sm:text-xs">Zero-Hallucination Voice Memory Companion</span>
-            <span className="text-accent text-[11px]">→</span>
-          </div>
-
-          {/* Product Headline */}
-          <h1 className="mt-8 font-display text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white leading-[1.08]">
-            Your conversations shouldn&apos;t vanish. <br />
-            <span className="text-gradient">Recall turns speech into spatial memory.</span>
-          </h1>
-
-          {/* Subtitle */}
-          <p className="mx-auto mt-6 max-w-2xl text-base sm:text-lg text-muted leading-relaxed">
-            Stop digging through hours of recordings and scattered notes. Recall structures your meetings into an interconnected celestial memory constellation. Speak naturally — Recall cites the verbatim transcript proof in sub-second time.
-          </p>
-
-          {/* Action Row */}
-          <div className="mt-10 flex flex-wrap justify-center items-center gap-4">
-            <Link
-              href="/space"
-              className="group inline-flex items-center gap-2.5 rounded-full bg-gradient-to-r from-[#7c5cff] to-[#3ee6c4] px-8 py-3.5 font-bold text-sm text-[#061018] shadow-[0_0_40px_rgba(124,92,255,0.7)] transition hover:scale-105 hover:shadow-[0_0_50px_rgba(62,230,196,0.95)]"
-            >
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
-              </span>
-              <span>Enter Memory Universe</span>
-              <span className="text-xs transition-transform group-hover:translate-x-1">→</span>
-            </Link>
-
-            <a
-              href="#product-sandbox"
-              className="inline-flex items-center gap-2 rounded-full border border-line bg-surface/70 px-6 py-3.5 text-sm font-semibold text-ink backdrop-blur hover:bg-white/10 hover:border-accent transition"
-            >
-              <span>Explore Interactive Demo</span>
-              <span className="text-xs text-accent">↓</span>
-            </a>
-          </div>
-
-          {/* Trust & Proof Badges */}
-          <div className="mt-12 flex flex-wrap justify-center items-center gap-6 text-xs text-muted">
-            <div className="flex items-center gap-2 rounded-lg bg-surface/40 px-3 py-1.5 border border-line/60">
-              <span className="text-emerald-400 font-bold">100%</span>
-              <span>Grounded Provenance</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg bg-surface/40 px-3 py-1.5 border border-line/60">
-              <span className="text-accent-2 font-bold">&lt; 25ms</span>
-              <span>RRF Vector Search</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg bg-surface/40 px-3 py-1.5 border border-line/60">
-              <span className="text-accent font-bold">WebRTC</span>
-              <span>Powered by Bolna</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg bg-surface/40 px-3 py-1.5 border border-line/60">
-              <span className="text-pink-400 font-bold">0%</span>
-              <span>Hallucinations</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 3. Interactive Live Product Sandbox / App Window */}
-      <section id="product-sandbox" className="relative px-4 sm:px-6 py-12">
-        <div className="mx-auto max-w-6xl">
-          <div className="text-center mb-8">
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-accent-2">
-              Live Product Experience
-            </span>
-            <h2 className="mt-2 font-display text-2xl sm:text-4xl font-bold text-white">
-              Test the Memory Engine Right Here
-            </h2>
-            <p className="mt-2 text-xs sm:text-sm text-muted max-w-xl mx-auto">
-              Select any query below to watch Recall&apos;s voice orb pulse, beam light into the memory field, and retrieve the verbatim quote.
-            </p>
-          </div>
-
-          {/* Interactive Query Selector Pills */}
-          <div className="flex flex-wrap justify-center gap-2 mb-6">
-            <button
-              onClick={() => {
-                setActiveDemoKey("db");
-                setIsDemoSpeaking(true);
-                setTimeout(() => setIsDemoSpeaking(false), 2400);
-              }}
-              className={`rounded-full px-4 py-2 text-xs font-semibold transition border ${
-                activeDemoKey === "db"
-                  ? "bg-accent/20 border-accent text-white shadow-[0_0_15px_rgba(139,123,255,0.4)]"
-                  : "bg-surface/60 border-line text-muted hover:text-white hover:border-accent/40"
-              }`}
-            >
-              💬 &ldquo;Which deployment provider did we pick?&rdquo;
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveDemoKey("websocket");
-                setIsDemoSpeaking(true);
-                setTimeout(() => setIsDemoSpeaking(false), 2400);
-              }}
-              className={`rounded-full px-4 py-2 text-xs font-semibold transition border ${
-                activeDemoKey === "websocket"
-                  ? "bg-accent/20 border-accent text-white shadow-[0_0_15px_rgba(139,123,255,0.4)]"
-                  : "bg-surface/60 border-line text-muted hover:text-white hover:border-accent/40"
-              }`}
-            >
-              💬 &ldquo;What did Priya commit to regarding WebSockets?&rdquo;
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveDemoKey("deadline");
-                setIsDemoSpeaking(true);
-                setTimeout(() => setIsDemoSpeaking(false), 2400);
-              }}
-              className={`rounded-full px-4 py-2 text-xs font-semibold transition border ${
-                activeDemoKey === "deadline"
-                  ? "bg-accent/20 border-accent text-white shadow-[0_0_15px_rgba(139,123,255,0.4)]"
-                  : "bg-surface/60 border-line text-muted hover:text-white hover:border-accent/40"
-              }`}
-            >
-              💬 &ldquo;When is the investor demo deadline?&rdquo;
-            </button>
-          </div>
-
-          {/* Product Window Shell */}
-          <div className="rounded-3xl border border-line/90 bg-[#060a1a] shadow-2xl overflow-hidden backdrop-blur-2xl">
-            {/* Window Chrome / Title Bar */}
-            <div className="flex items-center justify-between border-b border-line/80 bg-paper/80 px-5 py-3 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-rose-500/80" />
-                <span className="h-3 w-3 rounded-full bg-amber-500/80" />
-                <span className="h-3 w-3 rounded-full bg-emerald-500/80" />
-                <span className="ml-3 font-mono text-[11px] text-muted">recall://space/universe-v1</span>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300 border border-emerald-500/20">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  Bolna Engine Online
-                </span>
-                <span className="text-muted text-[11px]">48 Memories Indexed</span>
-              </div>
-            </div>
-
-            {/* Simulated Main Space Viewport */}
-            <div className="relative min-h-[440px] sm:min-h-[500px] w-full bg-[#040612] p-6 flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden">
-              {/* Cosmic Stars Canvas Simulation */}
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-accent/15 via-[#050814]/90 to-[#040612]" />
-
-              {/* Orbital guide rings */}
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 rounded-full border border-accent/15 pointer-events-none" />
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[440px] w-[440px] rounded-full border border-accent/10 border-dashed pointer-events-none" />
-
-              {/* Left HUD: The Simulated Live Evidence Card */}
-              <div className="relative z-20 w-full md:w-80 rounded-2xl border border-line bg-surface-solid/95 p-4 backdrop-blur-xl shadow-2xl animate-in fade-in slide-in-from-left-4">
-                <div className="flex items-center justify-between pb-2 border-b border-line text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-accent-2 animate-pulse" />
-                    <span className="font-semibold text-white uppercase tracking-wider text-[11px]">
-                      Retrieved Evidence
-                    </span>
-                  </div>
-                  <span className="rounded bg-accent/20 px-2 py-0.5 text-[10px] font-bold text-accent">
-                    {currentDemo.kind}
-                  </span>
-                </div>
-
-                <div className="mt-3 space-y-2.5">
-                  <div>
-                    <span className="text-[10px] uppercase font-semibold text-muted">Source Transcript</span>
-                    <h4 className="text-xs font-bold text-white mt-0.5">{currentDemo.title}</h4>
-                    <span className="text-[10px] text-muted">{currentDemo.date} · Said by {currentDemo.speaker}</span>
-                  </div>
-
-                  <div className="rounded-xl border border-accent/30 bg-accent/10 p-3">
-                    <span className="text-[10px] uppercase font-bold text-accent-2">Verbatim Proof</span>
-                    <blockquote className="mt-1 text-xs text-ink italic leading-relaxed">
-                      &ldquo;{currentDemo.quote}&rdquo;
-                    </blockquote>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1 text-[11px]">
-                    <span className="text-muted">Provenance status:</span>
-                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                      <span>✓</span> Verified Ground Truth
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Center: The Interactive Voice Orb */}
-              <div className="relative z-20 flex flex-col items-center justify-center py-4">
-                <button
-                  onClick={() => {
-                    setIsDemoSpeaking(true);
-                    setTimeout(() => setIsDemoSpeaking(false), 2400);
-                  }}
-                  className="group relative grid h-36 w-36 sm:h-44 sm:w-44 place-items-center rounded-full outline-none transition-transform hover:scale-105"
-                  title="Click to simulate voice interaction"
-                >
-                  <div
-                    className={`absolute inset-0 rounded-full bg-gradient-to-tr from-[#7c5cff] via-[#8b7bff] to-[#3ee6c4] blur-2xl opacity-75 group-hover:opacity-100 transition duration-700 ${
-                      isDemoSpeaking ? "animate-ping opacity-90 scale-110" : "animate-pulse"
-                    }`}
-                  />
-                  <div className="relative grid h-32 w-32 sm:h-36 sm:w-36 place-items-center rounded-full bg-gradient-to-br from-[#12193b] to-[#080d22] border-2 border-accent-2/60 shadow-[0_0_40px_rgba(62,230,196,0.6)]">
-                    <span className="text-xs font-bold uppercase tracking-wider text-white drop-shadow">
-                      {isDemoSpeaking ? "Retrieving…" : "Talk to Recall"}
-                    </span>
-                    <span className="text-[10px] text-accent-2 mt-0.5 font-medium">
-                      {isDemoSpeaking ? "Audio Reactive" : "Click Orb"}
-                    </span>
-                  </div>
-                </button>
-                <span className="mt-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
-                  Powered by Bolna WebRTC
-                </span>
-              </div>
-
-              {/* Right HUD: Constellation Cluster Breakdown */}
-              <div className="relative z-20 w-full md:w-64 rounded-2xl border border-line bg-surface/80 p-4 backdrop-blur-xl">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-muted">
-                  Active Constellations
-                </span>
-                <ul className="mt-2.5 space-y-2 text-xs">
-                  <li className="flex items-center justify-between p-2 rounded-lg bg-paper/70 border border-line/60">
-                    <span className="text-white font-medium">Infrastructure & Cloud</span>
-                    <span className="text-accent-2 font-bold text-[11px]">18 nodes</span>
-                  </li>
-                  <li className="flex items-center justify-between p-2 rounded-lg bg-paper/70 border border-line/60">
-                    <span className="text-white font-medium">Product Roadmap</span>
-                    <span className="text-accent font-bold text-[11px]">14 nodes</span>
-                  </li>
-                  <li className="flex items-center justify-between p-2 rounded-lg bg-paper/70 border border-line/60">
-                    <span className="text-white font-medium">Action Items & Owners</span>
-                    <span className="text-pink-400 font-bold text-[11px]">16 nodes</span>
-                  </li>
-                </ul>
-
-                <Link
-                  href="/space"
-                  className="mt-3 block w-full rounded-lg bg-accent/20 hover:bg-accent/30 py-2 text-center text-xs font-bold text-accent transition"
-                >
-                  Explore Full Canvas →
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Problem vs Solution: The Product Contrast */}
-      <section id="comparison" className="relative px-6 py-20 border-t border-line/60 bg-paper/50">
-        <div className="mx-auto max-w-5xl">
-          <div className="text-center max-w-2xl mx-auto mb-14">
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-accent">Product Philosophy</span>
-            <h2 className="mt-2 font-display text-3xl sm:text-4xl font-bold text-white">
-              Why Traditional Note-Taking Fails
-            </h2>
-            <p className="mt-3 text-sm text-muted">
-              Most productivity tools expect you to manually organize, tag, and file meeting notes. Recall treats human memory like a living conversation.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-8">
-            {/* The Old Way */}
-            <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-6 backdrop-blur-md">
-              <div className="flex items-center gap-2 text-rose-400 text-sm font-bold uppercase tracking-wider">
-                <span>✕</span>
-                <span>The Traditional Way</span>
-              </div>
-              <ul className="mt-5 space-y-4 text-xs sm:text-sm text-muted">
-                <li className="flex items-start gap-3">
-                  <span className="text-rose-400 font-bold mt-0.5">•</span>
-                  <span>45-minute recording files sitting forgotten in Zoom cloud storage.</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-rose-400 font-bold mt-0.5">•</span>
-                  <span>Manual note documents that nobody updates or reads after the meeting ends.</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-rose-400 font-bold mt-0.5">•</span>
-                  <span>Generic LLM summaries that hallucinate decisions or miss crucial nuances.</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-rose-400 font-bold mt-0.5">•</span>
-                  <span>Decisions superseded weeks ago are lost in Slack threads with zero paper trail.</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* The Recall Way */}
-            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 backdrop-blur-md">
-              <div className="flex items-center gap-2 text-emerald-400 text-sm font-bold uppercase tracking-wider">
-                <span>✓</span>
-                <span>The Recall Engine</span>
-              </div>
-              <ul className="mt-5 space-y-4 text-xs sm:text-sm text-ink">
-                <li className="flex items-start gap-3">
-                  <span className="text-emerald-400 font-bold mt-0.5">✓</span>
-                  <span><strong>Zero Manual Tagging</strong>: Decisions, commitments, and facts extracted automatically.</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-emerald-400 font-bold mt-0.5">✓</span>
-                  <span><strong>Living Superseded Links</strong>: When an earlier agreement changes, Recall links them explicitly.</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-emerald-400 font-bold mt-0.5">✓</span>
-                  <span><strong>Verifiable Quotation</strong>: Every voice reply points directly to the exact speaker and transcript line.</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-emerald-400 font-bold mt-0.5">✓</span>
-                  <span><strong>Voice-First Simplicity</strong>: Tap the orb or dial your phone to retrieve answers in seconds.</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 5. Product Bento Grid Features */}
-      <section id="features" className="relative px-6 py-24 border-t border-line/60">
-        <div className="mx-auto max-w-6xl">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-accent-2">
-              Capabilities
-            </span>
-            <h2 className="mt-2 font-display text-3xl sm:text-5xl font-bold text-white">
-              Engineered for Instant, Truthful Recall
-            </h2>
-            <p className="mt-3 text-sm text-muted">
-              Built from the ground up for the Bolna Symphony Buildathon using modern WebRTC, asynchronous vector pipelines, and strict provenance gating.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Bento Card 1: Constellation Graph (Span 2) */}
-            <div className="md:col-span-2 rounded-3xl border border-line bg-surface/70 p-8 backdrop-blur-xl hover:border-accent/60 transition group flex flex-col justify-between">
-              <div>
-                <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent/20 text-lg text-accent">
-                  🌌
-                </span>
-                <h3 className="mt-4 font-display text-xl font-bold text-white">
-                  Spatial Memory Constellation
-                </h3>
-                <p className="mt-2 text-xs sm:text-sm text-muted max-w-lg leading-relaxed">
-                  Every extracted memory lives in a golden-angle spiral around its topic cluster. Edges highlight semantic similarities, while directional energy lines trace how decisions evolve and supersede older ideas.
-                </p>
-              </div>
-
-              <div className="mt-6 rounded-2xl border border-line bg-black/40 p-4 font-mono text-xs text-accent-2">
-                <code>{`graph.traverse({ links: ["supersedes", "conflicts_with"], mode: "spatial" })`}</code>
-              </div>
-            </div>
-
-            {/* Bento Card 2: Voice Engine */}
-            <div className="rounded-3xl border border-line bg-surface/70 p-8 backdrop-blur-xl hover:border-accent/60 transition flex flex-col justify-between">
-              <div>
-                <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent-2/20 text-lg text-accent-2">
-                  🎙️
-                </span>
-                <h3 className="mt-4 font-display text-xl font-bold text-white">
-                  Bolna Voice Pipeline
-                </h3>
-                <p className="mt-2 text-xs sm:text-sm text-muted leading-relaxed">
-                  Sub-second turn-taking via WebRTC. Real-time audio amplitude analysis drives the pulsating orb with dynamic color-coded state transitions.
-                </p>
-              </div>
-
-              <div className="mt-6 flex items-center justify-between text-xs text-muted border-t border-line/60 pt-4">
-                <span>Latency</span>
-                <span className="text-emerald-400 font-bold">&lt; 1000ms end-to-end</span>
-              </div>
-            </div>
-
-            {/* Bento Card 3: Strict Ground Truth */}
-            <div className="rounded-3xl border border-line bg-surface/70 p-8 backdrop-blur-xl hover:border-accent/60 transition flex flex-col justify-between">
-              <div>
-                <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400/20 text-lg text-emerald-400">
-                  🛡️
-                </span>
-                <h3 className="mt-4 font-display text-xl font-bold text-white">
-                  Proven Ground Truth
-                </h3>
-                <p className="mt-2 text-xs sm:text-sm text-muted leading-relaxed">
-                  Calibrated similarity thresholds prevent conversational guessing. If a detail wasn&apos;t recorded, Recall explicitly says so.
-                </p>
-              </div>
-
-              <div className="mt-6 flex items-center justify-between text-xs text-muted border-t border-line/60 pt-4">
-                <span>Hallucinations</span>
-                <span className="text-emerald-400 font-bold">0% Guaranteed</span>
-              </div>
-            </div>
-
-            {/* Bento Card 4: Mission Control Slide-out (Span 2) */}
-            <div className="md:col-span-2 rounded-3xl border border-line bg-surface/70 p-8 backdrop-blur-xl hover:border-accent/60 transition flex flex-col justify-between">
-              <div>
-                <span className="grid h-10 w-10 place-items-center rounded-xl bg-purple-400/20 text-lg text-purple-400">
-                  🛸
-                </span>
-                <h3 className="mt-4 font-display text-xl font-bold text-white">
-                  Slide-Out Mission Control Drawer
-                </h3>
-                <p className="mt-2 text-xs sm:text-sm text-muted max-w-lg leading-relaxed">
-                  A side-panel popup houses your complete conversation library, full interactive transcripts with evidence quote scrolling, and outbound phone fallback controls.
-                </p>
-              </div>
-
-              <div className="mt-6 flex items-center gap-4 text-xs text-muted border-t border-line/60 pt-4">
-                <span>✓ Interactive transcripts</span>
-                <span>✓ Phone PSTN dialer</span>
-                <span>✓ Memory item manager</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 6. Persona Use-Case Matrix */}
-      <section className="relative px-6 py-20 border-t border-line/60 bg-paper/40">
-        <div className="mx-auto max-w-5xl">
-          <div className="text-center max-w-xl mx-auto mb-10">
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-accent">Use Cases</span>
-            <h2 className="mt-2 font-display text-3xl font-bold text-white">
-              Who Uses Recall Daily
-            </h2>
-          </div>
-
-          {/* Persona Switcher Tabs */}
-          <div className="flex justify-center gap-3 mb-8">
-            <button
-              onClick={() => setActivePersona("eng")}
-              className={`rounded-full px-5 py-2 text-xs font-bold transition border ${
-                activePersona === "eng"
-                  ? "bg-accent border-accent text-white shadow-lg"
-                  : "bg-surface border-line text-muted hover:text-white"
-              }`}
-            >
-              Engineering Leads
-            </button>
-            <button
-              onClick={() => setActivePersona("pm")}
-              className={`rounded-full px-5 py-2 text-xs font-bold transition border ${
-                activePersona === "pm"
-                  ? "bg-accent border-accent text-white shadow-lg"
-                  : "bg-surface border-line text-muted hover:text-white"
-              }`}
-            >
-              Product Managers
-            </button>
-            <button
-              onClick={() => setActivePersona("founder")}
-              className={`rounded-full px-5 py-2 text-xs font-bold transition border ${
-                activePersona === "founder"
-                  ? "bg-accent border-accent text-white shadow-lg"
-                  : "bg-surface border-line text-muted hover:text-white"
-              }`}
-            >
-              Founders & Executives
-            </button>
-          </div>
-
-          {/* Persona Card Content */}
-          <div className="rounded-3xl border border-line bg-surface/80 p-8 backdrop-blur-xl">
-            {activePersona === "eng" && (
-              <div className="space-y-4">
-                <h3 className="font-display text-xl font-bold text-white">
-                  &ldquo;Did we agree to deprecate the REST endpoint before v2 launch?&rdquo;
-                </h3>
-                <p className="text-sm text-muted leading-relaxed">
-                  Engineering teams make hundreds of micro-architectural decisions across daily standups and RFC reviews. Recall creates an instant, search-free memory record so new teammates or busy tech leads can verify API contracts and schema choices without searching Jira tickets.
-                </p>
-                <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                  <span className="rounded-md bg-accent/15 px-2.5 py-1 text-accent font-semibold">Decisions tracking</span>
-                  <span className="rounded-md bg-accent-2/15 px-2.5 py-1 text-accent-2 font-semibold">Tech debt commitments</span>
-                  <span className="rounded-md bg-white/10 px-2.5 py-1 text-white font-semibold">Architecture changelog</span>
-                </div>
-              </div>
-            )}
-
-            {activePersona === "pm" && (
-              <div className="space-y-4">
-                <h3 className="font-display text-xl font-bold text-white">
-                  &ldquo;What exact pain point did Sarah from Stripe report during onboarding?&rdquo;
-                </h3>
-                <p className="text-sm text-muted leading-relaxed">
-                  Instead of scrubbing through twenty 30-minute customer interview recordings, product managers can ask Recall directly. Recall cites the user&apos;s exact feedback quote and links it to feature requests.
-                </p>
-                <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                  <span className="rounded-md bg-accent/15 px-2.5 py-1 text-accent font-semibold">Customer verbatim quotes</span>
-                  <span className="rounded-md bg-accent-2/15 px-2.5 py-1 text-accent-2 font-semibold">Feature priorities</span>
-                  <span className="rounded-md bg-white/10 px-2.5 py-1 text-white font-semibold">Roadmap sync</span>
-                </div>
-              </div>
-            )}
-
-            {activePersona === "founder" && (
-              <div className="space-y-4">
-                <h3 className="font-display text-xl font-bold text-white">
-                  &ldquo;What valuation cap did we discuss with the lead investor on Tuesday?&rdquo;
-                </h3>
-                <p className="text-sm text-muted leading-relaxed">
-                  Founders manage dozens of high-stakes conversations across fundraising, legal, hiring, and board alignments. Recall ensures critical numbers, promised deliverables, and contractual understandings are never misremembered.
-                </p>
-                <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                  <span className="rounded-md bg-accent/15 px-2.5 py-1 text-accent font-semibold">Investor commitments</span>
-                  <span className="rounded-md bg-accent-2/15 px-2.5 py-1 text-accent-2 font-semibold">Board resolutions</span>
-                  <span className="rounded-md bg-white/10 px-2.5 py-1 text-white font-semibold">Action items owner</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* 7. Workflow Walkthrough */}
-      <section id="workflow" className="relative px-6 py-20 border-t border-line/60">
-        <div className="mx-auto max-w-5xl">
-          <div className="text-center max-w-xl mx-auto mb-14">
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-accent-2">Process</span>
-            <h2 className="mt-2 font-display text-3xl font-bold text-white">
-              Three Steps from Raw Audio to Infinite Recall
-            </h2>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="rounded-2xl border border-line bg-surface/50 p-6 relative">
-              <span className="text-3xl font-display font-extrabold text-accent/30">01</span>
-              <h3 className="mt-3 text-base font-bold text-white">Import Transcripts</h3>
-              <p className="mt-2 text-xs text-muted leading-relaxed">
-                Upload or paste meeting transcripts (.txt, .md, .vtt). Recall parses speaker turns, timestamps, and segments without manual formatting.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-line bg-surface/50 p-6 relative">
-              <span className="text-3xl font-display font-extrabold text-accent-2/30">02</span>
-              <h3 className="mt-3 text-base font-bold text-white">Graph Synthesis</h3>
-              <p className="mt-2 text-xs text-muted leading-relaxed">
-                Background pipelines extract decisions, promises, and facts, computing vector embeddings and clustering them into starry orbital systems.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-line bg-surface/50 p-6 relative">
-              <span className="text-3xl font-display font-extrabold text-purple-400/30">03</span>
-              <h3 className="mt-3 text-base font-bold text-white">Ambient Voice Recall</h3>
-              <p className="mt-2 text-xs text-muted leading-relaxed">
-                Speak directly to the Voice Orb or query in space. Recall illuminates the matching stars and cites verbatim proof instantly.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 8. Frequently Asked Questions (FAQ) Accordion */}
-      <section id="faq" className="relative px-6 py-20 border-t border-line/60 bg-paper/40">
-        <div className="mx-auto max-w-4xl">
-          <div className="text-center mb-12">
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-accent">Knowledge Base</span>
-            <h2 className="mt-2 font-display text-3xl font-bold text-white">
-              Frequently Asked Questions
-            </h2>
-          </div>
-
-          <div className="space-y-3">
-            {FAQ_ITEMS.map((item, idx) => {
-              const isOpen = openFaq === idx;
-              return (
-                <div
-                  key={idx}
-                  className="rounded-2xl border border-line bg-surface/70 overflow-hidden transition"
-                >
-                  <button
-                    onClick={() => setOpenFaq(isOpen ? null : idx)}
-                    className="w-full flex items-center justify-between p-5 text-left text-sm font-semibold text-white hover:text-accent transition"
-                  >
-                    <span>{item.q}</span>
-                    <span className="ml-4 text-xs text-muted">{isOpen ? "▲" : "▼"}</span>
-                  </button>
-                  {isOpen && (
-                    <div className="px-5 pb-5 text-xs sm:text-sm text-muted leading-relaxed border-t border-line/40 pt-3 animate-in fade-in">
-                      {item.a}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* 9. Final High-Conversion Product CTA */}
-      <section className="relative px-6 py-24 border-t border-line/60 bg-gradient-to-b from-paper to-[#030612]">
-        <div className="mx-auto max-w-4xl rounded-3xl border border-line/90 bg-surface/80 p-10 sm:p-16 text-center backdrop-blur-2xl shadow-2xl relative overflow-hidden">
-          <div className="absolute -top-32 -left-32 h-64 w-64 rounded-full bg-accent/20 blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-32 -right-32 h-64 w-64 rounded-full bg-accent-2/20 blur-3xl pointer-events-none" />
-
-          <span className="text-xs font-bold uppercase tracking-[0.25em] text-accent-2">
-            Get Started with Recall
+    <header
+      className={`sticky top-0 z-50 border-b bg-paper transition-[border-color,box-shadow] duration-300 ${
+        scrolled ? "border-line shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]" : "border-transparent"
+      }`}
+    >
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+        <Link href="/" aria-label="Recall home" className="group">
+          <span className="inline-block transition-transform duration-300 group-hover:-rotate-3">
+            <Logo size={22} />
           </span>
-          <h2 className="mt-3 font-display text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
-            Step into your conversation universe.
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-sm sm:text-base text-muted">
-            Never lose another decision, action item, or crucial agreement. Experience voice-first memory with ground-truth accuracy.
-          </p>
+        </Link>
+        <nav className="hidden items-center gap-7 text-sm text-muted md:flex">
+          <a href="#demo" className={navLink}>Demo</a>
+          <a href="#how" className={navLink}>How it works</a>
+          <a href="#faq" className={navLink}>FAQ</a>
+        </nav>
+        <div className="flex items-center gap-2">
+          <Link href="/login" className="btn rounded-lg px-3 py-1.5 text-sm text-ink-sub transition hover:bg-white/5 hover:text-ink">
+            Sign in
+          </Link>
+          <Link
+            href="/space"
+            className="btn group rounded-lg bg-accent px-3.5 py-1.5 text-sm font-semibold text-on-accent transition hover:brightness-105"
+          >
+            Open app <span className="nudge-x">→</span>
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
 
-          <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <Link
-              href="/space"
-              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#7c5cff] to-[#3ee6c4] px-8 py-3.5 font-bold text-sm text-[#061018] shadow-[0_0_35px_rgba(124,92,255,0.7)] transition hover:scale-105"
-            >
-              <span>Launch Recall Space</span>
-              <span>→</span>
-            </Link>
+function Hero() {
+  return (
+    <section className="mx-auto max-w-6xl px-5 pb-12 pt-16 md:pt-24">
+      <p className="enter font-mono text-xs uppercase tracking-[0.18em] text-muted" style={delay(0)}>
+        Voice memory for your meetings
+      </p>
+      <h1 className="mt-5 max-w-3xl font-display text-[40px] font-semibold leading-[1.05] tracking-[-0.03em] sm:text-6xl">
+        <span className="enter block" style={delay(90)}>Ask what was decided.</span>
+        <span className="enter block" style={delay(200)}>
+          Hear the answer, <mark className="hero sweep" style={delay(750)}>see the line</mark>.
+        </span>
+      </h1>
+      <p className="enter mt-6 max-w-xl text-base leading-relaxed text-ink-sub sm:text-lg" style={delay(320)}>
+        Recall reads your meeting transcripts and answers out loud — who said it, in which meeting, and the exact
+        quote. When a decision changed, it tells you. When nobody said it, it tells you that too.
+      </p>
+      <div className="enter mt-8 flex flex-wrap items-center gap-3" style={delay(430)}>
+        <Link
+          href="/login"
+          className="btn group rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-on-accent shadow-[0_8px_24px_-10px_rgba(242,201,76,0.6)] transition hover:brightness-105 hover:shadow-[0_10px_30px_-8px_rgba(242,201,76,0.7)]"
+        >
+          Try the demo account <span className="nudge-x">→</span>
+        </Link>
+        <a
+          href="#demo"
+          className="btn group rounded-lg border border-line px-5 py-2.5 text-sm font-medium text-ink-sub transition hover:border-white/20 hover:bg-white/[0.03] hover:text-ink"
+        >
+          Watch it answer <span className="nudge-y">↓</span>
+        </a>
+      </div>
+    </section>
+  );
+}
 
+/** The real /space components (memory field, orb, evidence panel) driven by the seeded sample account. */
+function Demo() {
+  const [idx, setIdx] = useState(0);
+  const [run, setRun] = useState(0);
+  const [phase, setPhase] = useState<Phase>("listening");
+  const [typed, setTyped] = useState("");
+  const [auto, setAuto] = useState(true);
+  const [visible, setVisible] = useState(false);
+  const [zoom, setZoom] = useState<number | null>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const scenario = DEMO_SCENARIOS[idx];
+
+  useEffect(() => {
+    setZoom(Math.max(0.36, Math.min(0.64, window.innerWidth / 1300)));
+    const el = frameRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0.35 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // Play one question: the user speaks (typed out), Recall searches, then answers.
+  useEffect(() => {
+    if (!visible) return;
+    const q = scenario.question;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let i = 0;
+    setPhase("listening");
+    setTyped("");
+    const tick = setInterval(() => {
+      i += 1;
+      setTyped(q.slice(0, i));
+      if (i >= q.length) {
+        clearInterval(tick);
+        timers.push(
+          setTimeout(() => {
+            setPhase("searching");
+            timers.push(setTimeout(() => setPhase("answered"), 1100));
+          }, 400),
+        );
+      }
+    }, 32);
+    return () => {
+      clearInterval(tick);
+      timers.forEach(clearTimeout);
+    };
+  }, [idx, run, visible, scenario.question]);
+
+  // Autoplay through the questions until the visitor picks one.
+  useEffect(() => {
+    if (!auto || !visible || phase !== "answered") return;
+    const t = setTimeout(() => setIdx((i) => (i + 1) % DEMO_SCENARIOS.length), AUTO_MS);
+    return () => clearTimeout(t);
+  }, [auto, visible, phase]);
+
+  const answered = phase === "answered";
+  const none = scenario.result.status === "no_reliable_memory";
+  const orbState: OrbState = phase === "listening" ? "listening" : phase === "searching" ? "searching" : none ? "no-memory" : "found";
+  const lit = answered && !none ? scenario.result.results.map((r) => r.ref) : [];
+
+  function pick(i: number) {
+    setAuto(false);
+    setIdx(i);
+    setRun((r) => r + 1);
+  }
+
+  return (
+    <section id="demo" className="mx-auto max-w-6xl scroll-mt-20 px-5 pb-20">
+      <Reveal>
+        <div
+          ref={frameRef}
+          className="overflow-hidden rounded-2xl border border-line bg-surface-solid shadow-[0_40px_80px_-40px_rgba(0,0,0,0.9)]"
+        >
+          {/* the app's own header row */}
+          <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+            <div className="flex items-center gap-3">
+              <Logo size={18} className="text-sm" />
+              <span className="hidden font-mono text-[11px] text-muted sm:inline">
+                {DEMO_GRAPH.nodes.length} memories · {DEMO_GRAPH.clusters.length} topics · 9 sample conversations
+              </span>
+            </div>
+            <span className="flex items-center gap-2 rounded-md border border-line px-2.5 py-1 text-[11px] text-ink-sub">
+              {phase === "listening" ? (
+                <span className="eq flex h-2.5 items-end gap-[2px]" aria-hidden>
+                  <span className="h-full w-[3px] rounded-sm bg-[#86c79a]" />
+                  <span className="h-full w-[3px] rounded-sm bg-[#86c79a]" />
+                  <span className="h-full w-[3px] rounded-sm bg-[#86c79a]" />
+                </span>
+              ) : (
+                <span className="h-1.5 w-1.5 rounded-full bg-[#86c79a]" />
+              )}
+              {phase === "listening" ? "Hearing you" : phase === "searching" ? "Searching" : "On a call"}
+            </span>
+          </div>
+
+          <div className="relative h-[400px] sm:h-[480px] lg:h-[560px]">
+            {zoom !== null && (
+              <SpaceCanvas
+                graph={DEMO_GRAPH}
+                highlightRefs={lit}
+                pulseKey={idx * 1000 + run}
+                orbState={orbState}
+                audioLevel={phase === "listening" ? 0.25 + 0.2 * Math.sin(typed.length) : answered ? 0.3 : 0}
+                onOrbClick={() => pick(idx)}
+                orbLabel="Replay"
+                interactive={false}
+                initialZoom={zoom}
+              />
+            )}
+
+            {answered && (
+              <EvidencePanel
+                key={`${idx}-${run}`}
+                question={scenario.question}
+                result={scenario.result}
+                className="rise-in absolute left-4 top-4 z-30 hidden max-h-[calc(100%-2rem)] w-80 lg:flex"
+              />
+            )}
+
+            {/* spoken exchange (overlaid on wide screens, below the field on narrow ones) */}
+            <div className="pointer-events-none absolute bottom-4 right-4 z-30 hidden w-[380px] space-y-2 lg:block">
+              <Exchange phase={phase} typed={typed} answer={scenario.answer} />
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t border-line p-3 lg:hidden">
+            <Exchange phase={phase} typed={typed} answer={scenario.answer} />
+          </div>
+
+          {answered && (
+            <div className="border-t border-line p-3 lg:hidden">
+              <EvidencePanel key={`m-${idx}-${run}`} question={scenario.question} result={scenario.result} className="rise-in" />
+            </div>
+          )}
+        </div>
+      </Reveal>
+
+      {/* question picker */}
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {DEMO_SCENARIOS.map((s, i) => {
+          const active = i === idx;
+          return (
+            <Reveal key={s.key} delay={120 + i * 70}>
+              <button
+                onClick={() => pick(i)}
+                className={`lift relative h-full w-full overflow-hidden rounded-xl border p-3.5 text-left ${
+                  active ? "border-accent/50 bg-accent-soft" : "border-line hover:border-white/20 hover:bg-white/[0.02]"
+                }`}
+              >
+                <span className="block text-sm font-medium text-ink">&ldquo;{s.question}&rdquo;</span>
+                <span className="mt-1.5 block text-xs leading-relaxed text-muted">{s.note}</span>
+                {active && auto && answered && (
+                  <span
+                    key={`${idx}-${run}`}
+                    className="countdown absolute inset-x-0 bottom-0 h-0.5 bg-accent/70"
+                    style={{ animationDuration: `${AUTO_MS}ms` }}
+                  />
+                )}
+              </button>
+            </Reveal>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="font-mono text-[11px] text-muted">
+          Real components from the app, running on the seeded sample account. Quotes are verbatim from its transcripts.
+        </p>
+        <button
+          onClick={() => setAuto((a) => !a)}
+          className="rounded-md border border-line px-2.5 py-1 font-mono text-[11px] text-muted transition hover:border-white/20 hover:text-ink"
+        >
+          {auto ? "❚❚ Pause tour" : "▶ Play tour"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function Exchange({ phase, typed, answer }: { phase: Phase; typed: string; answer: string }) {
+  return (
+    <>
+      <Line who="You" text={typed} typing={phase === "listening"} />
+      {phase === "searching" && <Line who="Recall" text="Searching your conversations…" dim searching />}
+      {phase === "answered" && <Line who="Recall" text={answer} accent />}
+    </>
+  );
+}
+
+function Line({
+  who,
+  text,
+  typing,
+  dim,
+  accent,
+  searching,
+}: {
+  who: string;
+  text: string;
+  typing?: boolean;
+  dim?: boolean;
+  accent?: boolean;
+  searching?: boolean;
+}) {
+  return (
+    <div
+      className={`rise-in rounded-lg border px-3 py-2 text-[13px] leading-relaxed shadow-lg ${
+        accent ? "border-accent/30 bg-surface-solid" : "border-line bg-surface-solid/95"
+      }`}
+    >
+      <span className={`mr-2 font-mono text-[10px] uppercase tracking-wider ${accent ? "text-accent" : "text-muted"}`}>{who}</span>
+      <span className={`${dim ? "text-muted" : "text-ink"} ${typing ? "caret" : ""}`}>{text}</span>
+      {searching && (
+        <span className="ml-1.5 inline-flex gap-0.5 align-middle" aria-hidden>
+          {[0, 150, 300].map((d) => (
+            <span key={d} className="h-1 w-1 animate-bounce rounded-full bg-accent" style={{ animationDelay: `${d}ms` }} />
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function SectionHead({ kicker, title, children }: { kicker: string; title: string; children?: React.ReactNode }) {
+  return (
+    <Reveal className="max-w-2xl">
+      <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted">{kicker}</p>
+      <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.02em] sm:text-4xl">{title}</h2>
+      {children && <p className="mt-4 text-base leading-relaxed text-ink-sub">{children}</p>}
+    </Reveal>
+  );
+}
+
+function HowItWorks() {
+  return (
+    <section id="how" className="scroll-mt-20 border-t border-line">
+      <div className="mx-auto max-w-6xl px-5 py-20">
+        <SectionHead kicker="How it works" title="From transcript to spoken answer" />
+        <div className="mt-12 grid gap-4 lg:grid-cols-3">
+          <Step i={0} n="01" title="Add a transcript" body="Paste it or upload .txt, .md, .vtt or .srt. Recall keeps each speaker's turns and their exact position in the text.">
+            <div className="space-y-1.5 font-mono text-[11.5px] leading-relaxed text-ink-sub">
+              <p><span className="text-muted">Neha:</span> I had it running in an afternoon as a test…</p>
+              <p>
+                <span className="text-muted">Mayur:</span>{" "}
+                <mark className="hl sweep-on-reveal" style={{ "--sweep-delay": "550ms" } as CSSProperties}>
+                  Then we&apos;re dropping ECS and moving the beta deployment to Render.
+                </mark>
+              </p>
+              <p><span className="text-muted">Neha:</span> Agreed. I&apos;ll migrate the staging environment…</p>
+            </div>
+          </Step>
+          <Step i={1} n="02" title="Recall pulls out what matters" body="Decisions, commitments, dates and facts — each one must quote the transcript word for word, or it's thrown away.">
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="pop-on-reveal rounded border border-line px-1.5 py-0.5 font-mono text-[10px] uppercase text-muted" style={delay(500)}>
+                  Decision
+                </span>
+                <span className="pop-on-reveal inline-block" style={delay(620)}>
+                  <DecisionStateChip state="decided" />
+                </span>
+              </div>
+              <p className="pop-on-reveal font-medium text-ink" style={delay(740)}>Move the beta deployment to Render</p>
+              <p className="pop-on-reveal font-mono text-[11px] text-muted" style={delay(860)}>Mayur · Deployment follow-up · chars 238–303</p>
+            </div>
+          </Step>
+          <Step i={2} n="03" title="Ask out loud" body="Tap the orb or have Recall call your phone. Ask anything — or say “remember that…” and it saves a new memory on the spot.">
+            <div className="space-y-2 text-[12.5px] leading-relaxed">
+              <p className="pop-on-reveal" style={delay(600)}>
+                <span className="mr-2 font-mono text-[10px] uppercase text-muted">You</span>Where are we deploying the beta?
+              </p>
+              <p className="pop-on-reveal" style={delay(1200)}>
+                <span className="mr-2 font-mono text-[10px] uppercase text-accent">Recall</span>On Render — you moved it off ECS five days ago.
+              </p>
+            </div>
+          </Step>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Step({ i, n, title, body, children }: { i: number; n: string; title: string; body: string; children: React.ReactNode }) {
+  return (
+    <Reveal delay={i * 110} className="h-full">
+      <div className="lift group flex h-full flex-col rounded-2xl border border-line bg-surface-solid hover:border-white/15">
+        <div className="min-h-[148px] border-b border-line p-5">{children}</div>
+        <div className="p-5">
+          <p className="font-mono text-xs text-accent">{n}</p>
+          <h3 className="mt-2 text-lg font-semibold">{title}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-muted">{body}</p>
+        </div>
+      </div>
+    </Reveal>
+  );
+}
+
+function Changes() {
+  return (
+    <section className="border-t border-line">
+      <div className="mx-auto grid max-w-6xl gap-12 px-5 py-20 lg:grid-cols-2 lg:items-center">
+        <SectionHead kicker="Decisions change" title="It knows which answer is current">
+          Notes keep the first thing anyone wrote down. Recall links a later decision to the one it replaced, so you
+          get today&apos;s answer and can still see what it used to be. If two meetings genuinely contradict each other,
+          it asks you which one applies instead of picking.
+        </SectionHead>
+
+        <Reveal as="ol" className="relative space-y-4 pl-6">
+          <span className="draw-down absolute bottom-2 left-0 top-2 w-px bg-line" aria-hidden />
+          <li className="relative">
+            <span className="pop-on-reveal absolute -left-[29px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-paper bg-[#e07a6e]" style={delay(200)} />
+            <p className="font-mono text-[11px] text-muted">Deployment planning · 12 days ago</p>
+            <div className="mt-2 rounded-xl border border-line bg-surface-solid p-4">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm text-muted">
+                  <span className="strike" style={{ "--strike-delay": "1100ms" } as CSSProperties}>Use AWS ECS for the beta deployment</span>
+                </p>
+                <span className="pop-on-reveal" style={delay(1500)}>
+                  <DecisionStateChip state="superseded" />
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-ink-sub">
+                <span className="text-muted">Mayur:</span> Let&apos;s go with AWS ECS for the beta deployment. We have the credits and it scales.
+              </p>
+            </div>
+          </li>
+          <li className="pop-on-reveal relative" style={delay(800)}>
+            <span className="absolute -left-[29px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-paper bg-[#86c79a]" />
+            <p className="font-mono text-[11px] text-muted">Deployment follow-up · 5 days ago</p>
+            <div className="mt-2 rounded-xl border border-accent/30 bg-surface-solid p-4">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-medium text-ink">Move the beta deployment to Render</p>
+                <DecisionStateChip state="decided" />
+              </div>
+              <p className="mt-2 text-xs text-ink-sub">
+                <span className="text-muted">Mayur:</span>{" "}
+                <mark className="hl sweep-on-reveal" style={{ "--sweep-delay": "1700ms" } as CSSProperties}>
+                  Then we&apos;re dropping ECS and moving the beta deployment to Render.
+                </mark>
+              </p>
+            </div>
+          </li>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function Honest() {
+  const stats = [
+    { v: <><CountUp to={18} /> / 18</>, l: "retrieval eval cases pass, including 6 held-out questions it should refuse or paraphrase" },
+    { v: <><CountUp to={27} /> ms</>, l: "p95 search latency over 100 warm queries (keyword + vector, fused)" },
+    { v: <CountUp to={0.97} decimals={2} />, l: "share of extracted quotes that match the transcript exactly, with qwen2.5 7B running locally" },
+  ];
+  return (
+    <section className="border-t border-line">
+      <div className="mx-auto max-w-6xl px-5 py-20">
+        <SectionHead kicker="When it doesn't know" title="“I don't have a reliable memory of that.”">
+          Recall would rather say nothing than make something up. A question nobody discussed — like who your
+          accountant is — gets a plain no, and the memory field stays dark.
+        </SectionHead>
+        <Reveal delay={100}>
+          <dl className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-3">
+            {stats.map((s, i) => (
+              <div key={i} className="group bg-paper p-6 transition-colors duration-300 hover:bg-surface-solid">
+                <dt className="font-display text-3xl font-semibold tracking-tight transition-colors duration-300 group-hover:text-accent">{s.v}</dt>
+                <dd className="mt-2 text-sm leading-relaxed text-muted">{s.l}</dd>
+              </div>
+            ))}
+          </dl>
+        </Reveal>
+        <p className="mt-3 font-mono text-[11px] text-muted">Measured on the seeded sample account — see docs/eval-results.md and docs/model-benchmark.md.</p>
+      </div>
+    </section>
+  );
+}
+
+function Faq() {
+  return (
+    <section id="faq" className="scroll-mt-20 border-t border-line">
+      <div className="mx-auto grid max-w-6xl gap-10 px-5 py-20 lg:grid-cols-[1fr_1.4fr]">
+        <SectionHead kicker="FAQ" title="Questions people ask first" />
+        <Reveal delay={100} className="divide-y divide-line border-y border-line">
+          {FAQ.map((f, i) => (
+            <details key={f.q} className="group py-4" open={i === 0}>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-medium text-ink transition-colors hover:text-accent">
+                {f.q}
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-line font-mono text-muted transition duration-300 group-open:rotate-45 group-open:border-accent/40 group-open:text-accent">
+                  +
+                </span>
+              </summary>
+              <p className="mt-3 text-sm leading-relaxed text-ink-sub">{f.a}</p>
+            </details>
+          ))}
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="border-t border-line">
+      <div className="mx-auto max-w-6xl px-5 py-16">
+        <Reveal>
+          <div className="flex flex-col items-start justify-between gap-6 rounded-2xl border border-line bg-surface-solid p-8 transition-colors duration-300 hover:border-accent/30 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="font-display text-2xl font-semibold tracking-tight">Try it on the sample meetings</h2>
+              <p className="mt-1.5 text-sm text-muted">Nine seeded conversations. Sign in with the demo account and ask anything.</p>
+            </div>
             <Link
               href="/login"
-              className="rounded-full border border-line bg-white/5 px-7 py-3.5 text-sm font-semibold text-white hover:bg-white/10 hover:border-accent transition"
+              className="btn group shrink-0 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-on-accent transition hover:brightness-105"
             >
-              Sign In to Account
+              Open the demo <span className="nudge-x">→</span>
             </Link>
           </div>
+        </Reveal>
+        <div className="mt-10 flex flex-col justify-between gap-3 text-xs text-muted sm:flex-row">
+          <Logo size={18} className="text-sm" />
+          <span>Built for the Bolna Symphony Buildathon · voice by Bolna</span>
         </div>
-      </section>
-
-      {/* 10. Product Footer */}
-      <footer className="border-t border-line px-6 py-10 text-xs text-muted">
-        <div className="mx-auto max-w-7xl flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <span className="grid h-6 w-6 place-items-center rounded-lg bg-gradient-to-br from-[#7c5cff] to-[#3ee6c4] text-[10px] font-black text-[#061018]">
-              R
-            </span>
-            <span className="font-semibold text-white">Recall Engine</span>
-            <span>· Built for the Bolna Symphony Buildathon</span>
-          </div>
-
-          <div className="flex items-center gap-2 text-[11px] text-muted">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            <span>All Systems Operational</span>
-            <span className="mx-2 text-line">|</span>
-            <span>WebRTC Voice Gateway Active</span>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <Link href="/space" className="hover:text-white transition">Live Space Canvas</Link>
-            <Link href="/login" className="hover:text-white transition">Sign In</Link>
-          </div>
-        </div>
-      </footer>
-    </div>
+      </div>
+    </footer>
   );
 }

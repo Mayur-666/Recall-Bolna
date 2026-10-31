@@ -64,24 +64,22 @@ Open **http://localhost:3000**, sign in, and try typing "Which deployment provid
 | `postgres` | 5432 | Postgres 16 + pgvector |
 | `ollama` | 11434 | embeddings and extraction |
 | `tts` | internal | Kokoro-82M text-to-speech |
-| `tunnel` | — | cloudflared quick tunnel (profile `tunnel`, for Bolna) |
+| `tunnel` | — | cloudflared quick tunnel, so Bolna can reach the backend (URL synced to the agent automatically) |
 
 ## Voice calls (Bolna)
 
 Typing and dictation work without Bolna. Live voice calls need a Bolna account, an agent, and a public HTTPS URL that Bolna can reach your backend on. Full guide: **[docs/bolna-setup.md](docs/bolna-setup.md)**. In short:
 
 ```bash
-# 1. put BOLNA_API_KEY in .env, then expose the backend
-docker compose --profile tunnel up -d tunnel
-docker compose logs tunnel | grep trycloudflare.com      # copy the https URL into PUBLIC_BASE_URL
-docker compose up -d backend
+# 1. put BOLNA_API_KEY in .env, start everything (the tunnel starts with the rest)
+docker compose up -d --build
 
-# 2. create the agent once (copy the printed BOLNA_AGENT_ID into .env, then restart backend)
+# 2. create the agent once, then copy the printed BOLNA_AGENT_ID into .env
 docker compose exec backend python scripts/provision_agent.py --create
-
-# 3. push Recall's prompt, tools and call settings (re-run whenever the tunnel URL changes)
-docker compose exec backend python scripts/provision_agent.py
+docker compose up -d backend
 ```
+
+That's all. The `tunnel` service is a cloudflared quick tunnel, and its random `trycloudflare.com` URL changes on every start. The backend reads the current URL from the tunnel and updates the Bolna agent's tools and webhook by itself, both on start and whenever the tunnel restarts. Check it with `docker compose logs backend | grep "Bolna agent"`. Leave `PUBLIC_BASE_URL` empty, unless you serve the backend on a fixed domain.
 
 Choose the agent's LLM, voice and transcriber in Bolna Agent Studio. Provisioning never overrides them.
 

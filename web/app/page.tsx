@@ -93,7 +93,7 @@ function Header() {
             href="/space"
             className="btn group rounded-lg bg-accent px-3.5 py-1.5 text-sm font-semibold text-on-accent transition hover:brightness-105"
           >
-            Open app <span className="nudge-x">→</span>
+            Try Recall <span className="nudge-x">→</span>
           </Link>
         </div>
       </div>
@@ -122,7 +122,7 @@ function Hero() {
           href="/login"
           className="btn group rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-on-accent shadow-[0_8px_24px_-10px_rgba(242,201,76,0.6)] transition hover:brightness-105 hover:shadow-[0_10px_30px_-8px_rgba(242,201,76,0.7)]"
         >
-          Try the demo account <span className="nudge-x">→</span>
+          Try Recall <span className="nudge-x">→</span>
         </Link>
         <a
           href="#demo"

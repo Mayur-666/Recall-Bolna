@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     TTS_MODEL: str = ""
     RECALL_TOOL_TOKEN: str = ""
     PUBLIC_BASE_URL: str = ""
+    # cloudflared metrics server (compose "tunnel"). When set, the backend finds the quick-tunnel URL
+    # itself and re-provisions the Bolna agent whenever it changes, so PUBLIC_BASE_URL can stay empty.
+    TUNNEL_METRICS_URL: str = ""
+    TUNNEL_SYNC_INTERVAL_S: int = 30
     CALL_TOKEN_TTL_MIN: int = 30
     TOOL_RATE_LIMIT_PER_MIN: int = 30
 

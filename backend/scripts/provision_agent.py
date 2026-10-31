@@ -4,11 +4,9 @@
   python scripts/provision_agent.py              # update prompt, welcome, webhook, tools, interruption settings
   python scripts/provision_agent.py --dry-run    # print what would be sent, call nothing
 
-Bolna's documented PATCH /v2/agent/{id} accepts agent_prompts and a few agent_config
-fields (welcome message, webhook, synthesizer, ...) but not tools or task_config. So:
-  1. PATCH prompt + welcome + webhook (never touches providers);
-  2. GET -> replace only api_tools and Recall's task_config keys -> PUT,
-     keeping the LLM / synthesizer / transcriber / telephony chosen in Agent Studio.
+The public URL is PUBLIC_BASE_URL, or else the running quick tunnel's URL (TUNNEL_METRICS_URL).
+The backend already does this update by itself on start and whenever the tunnel URL changes;
+this script is for the first --create and for checking by hand. See app/bolna/provisioning.py.
 Provider blocks are printed before and after so you can see they're unchanged.
 """
 
@@ -25,25 +23,12 @@ from app.bolna.agent_config import (  # noqa: E402
     build_task_config,
     build_tools,
     load_prompt,
-    merge_for_put,
     welcome_message,
 )
+from app.bolna.provisioning import changed_providers, update_agent, webhook_url  # noqa: E402
+from app.bolna.tunnel_sync import discover_tunnel_url  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.integrations.bolna_client import BolnaClient, BolnaError  # noqa: E402
-
-
-def providers(agent: dict[str, Any]) -> dict[str, Any]:
-    cfg = agent.get("agent_config", agent)
-    tasks = cfg.get("tasks") or []
-    tc = (tasks[0] if tasks else {}).get("tools_config") or {}
-    llm = (tc.get("llm_agent") or {}).get("llm_config") or {}
-    return {
-        "llm": f"{llm.get('provider')}:{llm.get('model')}",
-        "synthesizer": (tc.get("synthesizer") or {}).get("provider"),
-        "transcriber": (tc.get("transcriber") or {}).get("provider"),
-        "input": (tc.get("input") or {}).get("provider"),
-        "tools": [t.get("name") for t in ((tc.get("api_tools") or {}).get("tools") or [])],
-    }
 
 
 async def main() -> int:
@@ -53,14 +38,21 @@ async def main() -> int:
     args = ap.parse_args()
     s = get_settings()
 
-    missing = [k for k in ("RECALL_TOOL_TOKEN", "PUBLIC_BASE_URL") if not getattr(s, k)]
+    base_url = s.PUBLIC_BASE_URL
+    if not base_url and s.TUNNEL_METRICS_URL:
+        base_url = await discover_tunnel_url(s.TUNNEL_METRICS_URL) or ""
+        if base_url:
+            print(f"Using the tunnel URL {base_url}")
+    missing = [k for k in ("RECALL_TOOL_TOKEN",) if not getattr(s, k)]
+    if not base_url:
+        missing.append("PUBLIC_BASE_URL (or a running tunnel)")
     if not args.dry_run and not s.BOLNA_API_KEY:
         missing.append("BOLNA_API_KEY")
     if missing:
-        print(f"Missing in .env: {', '.join(missing)}")
+        print(f"Missing: {', '.join(missing)}")
         return 2
-    tools = build_tools(s.PUBLIC_BASE_URL, s.RECALL_TOOL_TOKEN)
-    webhook = f"{s.PUBLIC_BASE_URL.rstrip('/')}/api/v1/bolna/webhook"
+    tools = build_tools(base_url, s.RECALL_TOOL_TOKEN)
+    webhook = webhook_url(base_url)
 
     def redact(obj: Any) -> str:
         return json.dumps(obj, indent=2).replace(s.RECALL_TOOL_TOKEN, "***")
@@ -89,25 +81,11 @@ async def main() -> int:
         print("BOLNA_AGENT_ID is empty. Run with --create first.")
         return 2
 
-    before = await client.get_agent(s.BOLNA_AGENT_ID)
-    print("Providers before:", providers(before))
-    await client.patch_agent(s.BOLNA_AGENT_ID, patch)
-    print("PATCHed prompt, welcome message and webhook URL.")
-
-    current = await client.get_agent(s.BOLNA_AGENT_ID)
-    put_payload = merge_for_put(
-        current, tools, build_task_config(), load_prompt(), welcome_message(), webhook
-    )
-    await client.put_agent(s.BOLNA_AGENT_ID, put_payload)
-    after = await client.get_agent(s.BOLNA_AGENT_ID)
-    print("Providers after: ", providers(after))
-    changed = {
-        k
-        for k in ("llm", "synthesizer", "transcriber", "input")
-        if providers(before)[k] != providers(after)[k]
-    }
-    if changed:
-        print(f"WARNING: provider fields changed: {sorted(changed)} — check Agent Studio.")
+    before, after = await update_agent(client, s.BOLNA_AGENT_ID, base_url, s.RECALL_TOOL_TOKEN)
+    print("Providers before:", before)
+    print("Providers after: ", after)
+    if changed := changed_providers(before, after):
+        print(f"WARNING: provider fields changed: {changed} — check Agent Studio.")
         return 1
     print("Tools and interruption settings updated; provider choices unchanged.")
     return 0

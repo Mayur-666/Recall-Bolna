@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.v1.router import api_router
+from app.bolna.tunnel_sync import run_tunnel_sync, sync_enabled
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
@@ -22,11 +23,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     warm = asyncio.create_task(get_model_client().warm_up())
     stop = asyncio.Event()
     worker = asyncio.create_task(run_worker(stop)) if get_settings().WORKER_ENABLED else None
+    # Point the Bolna agent at the current tunnel URL, and again whenever the tunnel restarts.
+    tunnel = asyncio.create_task(run_tunnel_sync(stop)) if sync_enabled() else None
     yield
     stop.set()
     warm.cancel()
     if worker is not None:
         await worker
+    if tunnel is not None:
+        await tunnel
 
 
 def create_app() -> FastAPI:

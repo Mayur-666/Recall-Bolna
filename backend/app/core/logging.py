@@ -36,3 +36,12 @@ def configure_logging() -> None:
         root.addFilter(RedactingFilter())
     for handler in root.handlers:
         handler.addFilter(RedactingFilter())
+    # Recall's own loggers print INFO (e.g. "Bolna agent now uses <tunnel URL>"); libraries stay at WARNING.
+    app_log = logging.getLogger("app")
+    if not app_log.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s: %(message)s"))
+        handler.addFilter(RedactingFilter())
+        app_log.addHandler(handler)
+        app_log.setLevel(logging.INFO)
+        app_log.propagate = False

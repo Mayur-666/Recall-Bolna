@@ -13,6 +13,7 @@ os.environ.update(
         "BOLNA_API_KEY": "",
         "BOLNA_AGENT_ID": "",
         "PUBLIC_BASE_URL": "",
+        "TUNNEL_METRICS_URL": "",
         "GOOGLE_CLIENT_ID": "",
         "GOOGLE_CLIENT_SECRET": "",
         "CARTESIA_API_KEY": "",
